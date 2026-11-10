@@ -12,12 +12,12 @@
           )
 
           if not files:
-              raise SystemExit("Start.io Android Gradle file not found")
+              raise SystemExit("Start.io plugin Gradle file not found")
 
           fixed = False
 
-          for gradle_file in files:
-              content = gradle_file.read_text(encoding="utf-8")
+          for file in files:
+              content = file.read_text(encoding="utf-8")
 
               updated, count = re.subn(
                   r'(?m)^(\s*)compileSdkVersion\s+\d+\s*$',
@@ -26,15 +26,14 @@
               )
 
               if count:
-                  gradle_file.write_text(updated, encoding="utf-8")
-                  print("Updated:", gradle_file)
+                  file.write_text(updated, encoding="utf-8")
+                  print("Updated:", file)
                   fixed = True
 
           if not fixed:
               raise SystemExit(
-                  "Could not find the hardcoded Start.io compileSdkVersion"
+                  "Could not find hardcoded compileSdkVersion in Start.io plugin"
               )
 
-          print("Start.io plugin compile SDK is now 36")
+          print("SUCCESS: Start.io plugin Compile SDK set to 36")
           PY
-          
