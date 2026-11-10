@@ -1,159 +1,4 @@
 
-name: Build Snake Master APK
-
-on:
-  workflow_dispatch:
-  push:
-    branches:
-      - main
-
-jobs:
-  build:
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Setup Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-
-      - name: Setup Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          channel: stable
-          cache: true
-
-      - name: Check Flutter
-        run: flutter --version
-
-      - name: Create Android project
-        run: |
-          flutter create \
-            --platforms=android \
-            --org com.shahabmillizai \
-            --project-name snakemaster .
-
-      - name: Set Android Compile SDK to 36
-        run: |
-          python3 - <<'PY'
-          import re
-          from pathlib import Path
-
-          files = [
-              Path("android/app/build.gradle.kts"),
-              Path("android/app/build.gradle")
-          ]
-
-          gradle_file = next(
-              (p for p in files if p.exists()),
-              None
-          )
-
-          if gradle_file is None:
-              raise SystemExit("Android app Gradle file not found")
-
-          content = gradle_file.read_text(encoding="utf-8")
-
-          patterns = [
-              (
-                  r'(?m)^(\s*)compileSdk\s*=\s*flutter\.compileSdkVersion\s*$',
-                  r'\g<1>compileSdk = 36'
-              ),
-              (
-                  r'(?m)^(\s*)compileSdkVersion\s+flutter\.compileSdkVersion\s*$',
-                  r'\g<1>compileSdkVersion 36'
-              ),
-              (
-                  r'(?m)^(\s*)compileSdk\s+flutter\.compileSdkVersion\s*$',
-                  r'\g<1>compileSdk 36'
-              )
-          ]
-
-          updated = False
-
-          for pattern, replacement in patterns:
-              content, count = re.subn(
-                  pattern,
-                  replacement,
-                  content
-              )
-
-              if count:
-                  updated = True
-                  break
-
-          if not updated:
-              raise SystemExit(
-                  "Could not find Flutter compileSdk setting"
-              )
-
-          gradle_file.write_text(content, encoding="utf-8")
-
-          print("App compileSdk successfully set to 36")
-          PY
-
-      - name: Configure Start.io App ID
-        env:
-          STARTIO_APP_ID: ${{ secrets.STARTIO_APP_ID }}
-        run: |
-          python3 - <<'PY'
-          import os
-          import re
-          from pathlib import Path
-
-          app_id = os.environ.get("STARTIO_APP_ID", "").strip()
-
-          if not app_id:
-              raise SystemExit("STARTIO_APP_ID secret is missing")
-
-          if not app_id.isdigit():
-              raise SystemExit("STARTIO_APP_ID must contain only digits")
-
-          manifest = Path(
-              "android/app/src/main/AndroidManifest.xml"
-          )
-
-          if not manifest.exists():
-              raise SystemExit("AndroidManifest.xml not found")
-
-          content = manifest.read_text(encoding="utf-8")
-
-          metadata = (
-              '<meta-data '
-              'android:name="com.startapp.sdk.APPLICATION_ID" '
-              f'android:value="{app_id}" />'
-          )
-
-          pattern = (
-              r'<meta-data\s+'
-              r'android:name="com\.startapp\.sdk\.APPLICATION_ID"'
-              r'\s+android:value="[^"]*"\s*/>'
-          )
-
-          if re.search(pattern, content):
-              content = re.sub(pattern, metadata, content)
-          else:
-              if "</application>" not in content:
-                  raise SystemExit("Application tag not found")
-
-              content = content.replace(
-                  "</application>",
-                  "        " + metadata + "\n    </application>",
-                  1
-              )
-
-          manifest.write_text(content, encoding="utf-8")
-
-          print("Start.io App ID configured successfully")
-          PY
-
-      - name: Get dependencies
-        run: flutter pub get
-
       - name: Set Start.io plugin Compile SDK to 36
         run: |
           python3 - <<'PY'
@@ -162,55 +7,34 @@ jobs:
 
           files = list(
               Path.home().glob(
-                  ".pub-cache/hosted/pub.dev/startapp_sdk-*/android/build.gradle*"
+                  ".pub-cache/hosted/pub.dev/startapp_sdk-*/android/build.gradle"
               )
           )
 
           if not files:
-              raise SystemExit(
-                  "Start.io plugin Gradle file not found"
-              )
+              raise SystemExit("Start.io Android Gradle file not found")
 
-          changed = False
+          fixed = False
 
           for gradle_file in files:
               content = gradle_file.read_text(encoding="utf-8")
 
               updated, count = re.subn(
-                  r"flutter\.compileSdkVersion",
-                  "36",
+                  r'(?m)^(\s*)compileSdkVersion\s+\d+\s*$',
+                  r'\g<1>compileSdkVersion 36',
                   content
               )
 
               if count:
-                  gradle_file.write_text(
-                      updated,
-                      encoding="utf-8"
-                  )
+                  gradle_file.write_text(updated, encoding="utf-8")
+                  print("Updated:", gradle_file)
+                  fixed = True
 
-                  changed = True
-                  print("Updated Start.io plugin:", gradle_file)
-
-          if not changed:
+          if not fixed:
               raise SystemExit(
-                  "Start.io plugin compileSdk reference was not found"
+                  "Could not find the hardcoded Start.io compileSdkVersion"
               )
+
+          print("Start.io plugin compile SDK is now 36")
           PY
-
-      - name: Remove generated default test
-        run: rm -f test/widget_test.dart
-
-      - name: Analyze Dart code
-        run: flutter analyze
-
-      - name: Build release APK
-        run: flutter build apk --release
-
-      - name: Upload release APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: Snake-Master-Release-APK
-          path: build/app/outputs/flutter-apk/app-release.apk
-          if-no-files-found: error
-          retention-days: 14
           
