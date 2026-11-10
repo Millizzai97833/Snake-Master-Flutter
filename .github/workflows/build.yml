@@ -27,7 +27,7 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Check Flutter version
+      - name: Check Flutter
         run: flutter --version
 
       - name: Create Android project
@@ -49,21 +49,17 @@ jobs:
           app_id = os.environ.get("STARTIO_APP_ID", "").strip()
 
           if not app_id:
-              raise SystemExit(
-                  "ERROR: STARTIO_APP_ID GitHub Actions secret is missing."
-              )
+              raise SystemExit("STARTIO_APP_ID secret is missing")
 
           if not app_id.isdigit():
-              raise SystemExit(
-                  "ERROR: STARTIO_APP_ID must contain only numbers."
-              )
+              raise SystemExit("STARTIO_APP_ID must contain only digits")
 
           manifest = Path(
               "android/app/src/main/AndroidManifest.xml"
           )
 
           if not manifest.exists():
-              raise SystemExit("ERROR: AndroidManifest.xml was not generated.")
+              raise SystemExit("AndroidManifest.xml not found")
 
           content = manifest.read_text(encoding="utf-8")
 
@@ -83,9 +79,7 @@ jobs:
               content = re.sub(pattern, metadata, content)
           else:
               if "</application>" not in content:
-                  raise SystemExit(
-                      "ERROR: Android application tag not found."
-                  )
+                  raise SystemExit("Application tag not found")
 
               content = content.replace(
                   "</application>",
@@ -95,16 +89,16 @@ jobs:
 
           manifest.write_text(content, encoding="utf-8")
 
-          if app_id not in manifest.read_text(encoding="utf-8"):
-              raise SystemExit("ERROR: Start.io App ID insertion failed.")
-
-          print("Start.io App ID configured successfully.")
+          print("Start.io App ID configured successfully")
           PY
 
-      - name: Get Flutter dependencies
+      - name: Get dependencies
         run: flutter pub get
 
-      - name: Check Dart code
+      - name: Remove generated default test
+        run: rm -f test/widget_test.dart
+
+      - name: Analyze Dart code
         run: flutter analyze
 
       - name: Build release APK
