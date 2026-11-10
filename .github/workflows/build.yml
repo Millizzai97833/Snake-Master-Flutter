@@ -81,6 +81,7 @@ jobs:
                   replacement,
                   content
               )
+
               if count:
                   updated = True
                   break
@@ -92,8 +93,7 @@ jobs:
 
           gradle_file.write_text(content, encoding="utf-8")
 
-          print("Android compileSdk successfully set to 36")
-          print("Updated:", gradle_file)
+          print("App compileSdk successfully set to 36")
           PY
 
       - name: Configure Start.io App ID
@@ -153,6 +153,49 @@ jobs:
 
       - name: Get dependencies
         run: flutter pub get
+
+      - name: Set Start.io plugin Compile SDK to 36
+        run: |
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+
+          files = list(
+              Path.home().glob(
+                  ".pub-cache/hosted/pub.dev/startapp_sdk-*/android/build.gradle*"
+              )
+          )
+
+          if not files:
+              raise SystemExit(
+                  "Start.io plugin Gradle file not found"
+              )
+
+          changed = False
+
+          for gradle_file in files:
+              content = gradle_file.read_text(encoding="utf-8")
+
+              updated, count = re.subn(
+                  r"flutter\.compileSdkVersion",
+                  "36",
+                  content
+              )
+
+              if count:
+                  gradle_file.write_text(
+                      updated,
+                      encoding="utf-8"
+                  )
+
+                  changed = True
+                  print("Updated Start.io plugin:", gradle_file)
+
+          if not changed:
+              raise SystemExit(
+                  "Start.io plugin compileSdk reference was not found"
+              )
+          PY
 
       - name: Remove generated default test
         run: rm -f test/widget_test.dart
