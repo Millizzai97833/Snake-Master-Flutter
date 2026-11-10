@@ -1,0 +1,54 @@
+
+name: Build Snake Master APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Create Android project
+        run: |
+          flutter create --platforms=android --org com.shahabmillizai --project-name snakemaster .
+
+      - name: Configure Start.io App ID
+        env:
+          STARTIO_APP_ID: ${{ secrets.STARTIO_APP_ID }}
+        run: |
+          if [ -n "$STARTIO_APP_ID" ]; then
+            sed -i "/<application/i\\ " android/app/src/main/AndroidManifest.xml
+            sed -i "/<application/a\\        <meta-data android:name=\"com.startapp.sdk.APPLICATION_ID\" android:value=\"$STARTIO_APP_ID\" />" android/app/src/main/AndroidManifest.xml
+          fi
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Build APK
+        run: flutter build apk --release
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Snake-Master-APK
+          path: build/app/outputs/flutter-apk/app-release.apk
+          
