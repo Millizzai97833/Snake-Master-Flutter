@@ -37,6 +37,65 @@ jobs:
             --org com.shahabmillizai \
             --project-name snakemaster .
 
+      - name: Set Android Compile SDK to 36
+        run: |
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+
+          files = [
+              Path("android/app/build.gradle.kts"),
+              Path("android/app/build.gradle")
+          ]
+
+          gradle_file = next(
+              (p for p in files if p.exists()),
+              None
+          )
+
+          if gradle_file is None:
+              raise SystemExit("Android app Gradle file not found")
+
+          content = gradle_file.read_text(encoding="utf-8")
+
+          patterns = [
+              (
+                  r'(?m)^(\s*)compileSdk\s*=\s*flutter\.compileSdkVersion\s*$',
+                  r'\g<1>compileSdk = 36'
+              ),
+              (
+                  r'(?m)^(\s*)compileSdkVersion\s+flutter\.compileSdkVersion\s*$',
+                  r'\g<1>compileSdkVersion 36'
+              ),
+              (
+                  r'(?m)^(\s*)compileSdk\s+flutter\.compileSdkVersion\s*$',
+                  r'\g<1>compileSdk 36'
+              )
+          ]
+
+          updated = False
+
+          for pattern, replacement in patterns:
+              content, count = re.subn(
+                  pattern,
+                  replacement,
+                  content
+              )
+              if count:
+                  updated = True
+                  break
+
+          if not updated:
+              raise SystemExit(
+                  "Could not find Flutter compileSdk setting"
+              )
+
+          gradle_file.write_text(content, encoding="utf-8")
+
+          print("Android compileSdk successfully set to 36")
+          print("Updated:", gradle_file)
+          PY
+
       - name: Configure Start.io App ID
         env:
           STARTIO_APP_ID: ${{ secrets.STARTIO_APP_ID }}
