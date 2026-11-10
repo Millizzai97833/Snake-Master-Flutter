@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Setup Java
@@ -27,28 +27,94 @@ jobs:
           channel: stable
           cache: true
 
+      - name: Check Flutter version
+        run: flutter --version
+
       - name: Create Android project
         run: |
-          flutter create --platforms=android --org com.shahabmillizai --project-name snakemaster .
+          flutter create \
+            --platforms=android \
+            --org com.shahabmillizai \
+            --project-name snakemaster .
 
       - name: Configure Start.io App ID
         env:
           STARTIO_APP_ID: ${{ secrets.STARTIO_APP_ID }}
         run: |
-          if [ -n "$STARTIO_APP_ID" ]; then
-            sed -i "/<application/i\\ " android/app/src/main/AndroidManifest.xml
-            sed -i "/<application/a\\        <meta-data android:name=\"com.startapp.sdk.APPLICATION_ID\" android:value=\"$STARTIO_APP_ID\" />" android/app/src/main/AndroidManifest.xml
-          fi
+          python3 - <<'PY'
+          import os
+          import re
+          from pathlib import Path
 
-      - name: Get dependencies
+          app_id = os.environ.get("STARTIO_APP_ID", "").strip()
+
+          if not app_id:
+              raise SystemExit(
+                  "ERROR: STARTIO_APP_ID GitHub Actions secret is missing."
+              )
+
+          if not app_id.isdigit():
+              raise SystemExit(
+                  "ERROR: STARTIO_APP_ID must contain only numbers."
+              )
+
+          manifest = Path(
+              "android/app/src/main/AndroidManifest.xml"
+          )
+
+          if not manifest.exists():
+              raise SystemExit("ERROR: AndroidManifest.xml was not generated.")
+
+          content = manifest.read_text(encoding="utf-8")
+
+          metadata = (
+              '<meta-data '
+              'android:name="com.startapp.sdk.APPLICATION_ID" '
+              f'android:value="{app_id}" />'
+          )
+
+          pattern = (
+              r'<meta-data\s+'
+              r'android:name="com\.startapp\.sdk\.APPLICATION_ID"'
+              r'\s+android:value="[^"]*"\s*/>'
+          )
+
+          if re.search(pattern, content):
+              content = re.sub(pattern, metadata, content)
+          else:
+              if "</application>" not in content:
+                  raise SystemExit(
+                      "ERROR: Android application tag not found."
+                  )
+
+              content = content.replace(
+                  "</application>",
+                  "        " + metadata + "\n    </application>",
+                  1
+              )
+
+          manifest.write_text(content, encoding="utf-8")
+
+          if app_id not in manifest.read_text(encoding="utf-8"):
+              raise SystemExit("ERROR: Start.io App ID insertion failed.")
+
+          print("Start.io App ID configured successfully.")
+          PY
+
+      - name: Get Flutter dependencies
         run: flutter pub get
 
-      - name: Build APK
+      - name: Check Dart code
+        run: flutter analyze
+
+      - name: Build release APK
         run: flutter build apk --release
 
-      - name: Upload APK
+      - name: Upload release APK
         uses: actions/upload-artifact@v4
         with:
-          name: Snake-Master-APK
+          name: Snake-Master-Release-APK
           path: build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
+          retention-days: 14
           
