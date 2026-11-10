@@ -2,6 +2,7 @@
 import 'dart:async';
 import 'dart:math';
 
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:startapp_sdk/startapp.dart';
 
@@ -62,16 +63,32 @@ class _SnakeGamePageState extends State<SnakeGamePage> {
   bool started = false;
   bool paused = false;
   bool gameOver = false;
+  bool adsInitialized = false;
 
   @override
   void initState() {
     super.initState();
-
-    startAppSdk.setTestAdsEnabled(true);
-
     resetGame();
-    loadBanner();
-    loadInterstitial();
+    initializeAds();
+  }
+
+  Future<void> initializeAds() async {
+    try {
+      // Test ads are enabled only in debug builds.
+      // Release APKs use real ads.
+      await startAppSdk.setTestAdsEnabled(kDebugMode);
+
+      if (!mounted) return;
+
+      adsInitialized = true;
+
+      await Future.wait([
+        loadBanner(),
+        loadInterstitial(),
+      ]);
+    } catch (e) {
+      debugPrint('Start.io initialization error: $e');
+    }
   }
 
   Future<void> loadBanner() async {
@@ -80,37 +97,59 @@ class _SnakeGamePageState extends State<SnakeGamePage> {
         StartAppBannerType.BANNER,
       );
 
-      if (mounted) {
-        setState(() => bannerAd = ad);
+      if (!mounted) {
+        ad.dispose();
+        return;
       }
+
+      setState(() {
+        bannerAd?.dispose();
+        bannerAd = ad;
+      });
     } catch (e) {
-      debugPrint('Banner error: $e');
+      debugPrint('Banner loading error: $e');
     }
   }
 
   Future<void> loadInterstitial() async {
+    if (!adsInitialized) return;
+
     try {
-      interstitialAd = await startAppSdk.loadInterstitialAd();
+      final ad = await startAppSdk.loadInterstitialAd();
+
+      if (!mounted) {
+        ad.dispose();
+        return;
+      }
+
+      interstitialAd?.dispose();
+      interstitialAd = ad;
     } catch (e) {
-      debugPrint('Interstitial error: $e');
+      debugPrint('Interstitial loading error: $e');
     }
   }
 
-  void showInterstitial() {
+  Future<void> showInterstitial() async {
     final ad = interstitialAd;
-    if (ad == null) return;
 
-    ad.show().then((shown) {
-      if (shown) {
-        ad.dispose();
-        if (mounted) {
-          interstitialAd = null;
-          loadInterstitial();
-        }
+    if (ad == null) {
+      debugPrint('Interstitial is not ready yet.');
+      return;
+    }
+
+    interstitialAd = null;
+
+    try {
+      await ad.show();
+    } catch (e) {
+      debugPrint('Interstitial display error: $e');
+    } finally {
+      ad.dispose();
+
+      if (mounted) {
+        await loadInterstitial();
       }
-    }).catchError((e) {
-      debugPrint('Interstitial show error: $e');
-    });
+    }
   }
 
   Point<int> newFood() {
@@ -144,11 +183,15 @@ class _SnakeGamePageState extends State<SnakeGamePage> {
     paused = false;
     gameOver = false;
 
-    if (mounted) setState(() {});
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   void startGame() {
-    if (gameOver) resetGame();
+    if (gameOver) {
+      resetGame();
+    }
 
     if (started && !paused) return;
 
@@ -168,7 +211,9 @@ class _SnakeGamePageState extends State<SnakeGamePage> {
   void togglePause() {
     if (!started || gameOver) return;
 
-    setState(() => paused = !paused);
+    setState(() {
+      paused = !paused;
+    });
 
     timer?.cancel();
 
@@ -187,27 +232,24 @@ class _SnakeGamePageState extends State<SnakeGamePage> {
         (direction == Direction.left && value == Direction.right) ||
         (direction == Direction.right && value == Direction.left);
 
-    if (!reverse) nextDirection = value;
+    if (!reverse) {
+      nextDirection = value;
+    }
   }
 
   void moveSnake() {
-    if (!mounted || paused || gameOver) return;
+    if (!mounted || paused || gameOver || !started) return;
 
     direction = nextDirection;
 
     final head = snake.first;
-    late Point<int> next;
 
-    switch (direction) {
-      case Direction.up:
-        next = Point(head.x, head.y - 1);
-      case Direction.down:
-        next = Point(head.x, head.y + 1);
-      case Direction.left:
-        next = Point(head.x - 1, head.y);
-      case Direction.right:
-        next = Point(head.x + 1, head.y);
-    }
+    final Point<int> next = switch (direction) {
+      Direction.up => Point(head.x, head.y - 1),
+      Direction.down => Point(head.x, head.y + 1),
+      Direction.left => Point(head.x - 1, head.y),
+      Direction.right => Point(head.x + 1, head.y),
+    };
 
     final eating = next == food;
 
@@ -389,6 +431,172 @@ class _SnakeGamePageState extends State<SnakeGamePage> {
                                         gameOver
                                             ? 'Your score: $score'
                                             : 'Swipe to control the snake',
+                                      ),
+                                      const SizedBox(height: 15),
+                                      FilledButton(
+                                        onPressed: startGame,
+                                        child: Text(
+                                          gameOver
+                                              ? 'PLAY AGAIN'
+                                              : 'START GAME',
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            directionButton(
+              Icons.keyboard_arrow_up,
+              Direction.up,
+            ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                directionButton(
+                  Icons.keyboard_arrow_left,
+                  Direction.left,
+                ),
+                const SizedBox(width: 58),
+                directionButton(
+                  Icons.keyboard_arrow_right,
+                  Direction.right,
+                ),
+              ],
+            ),
+            directionButton(
+              Icons.keyboard_arrow_down,
+              Direction.down,
+            ),
+            const SizedBox(height: 10),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                OutlinedButton.icon(
+                  onPressed: togglePause,
+                  icon: Icon(
+                    paused ? Icons.play_arrow : Icons.pause,
+                  ),
+                  label: Text(paused ? 'RESUME' : 'PAUSE'),
+                ),
+                const SizedBox(width: 12),
+                OutlinedButton.icon(
+                  onPressed: resetGame,
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('RESTART'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            if (bannerAd != null)
+              SizedBox(
+                height: 60,
+                child: StartAppBanner(bannerAd!),
+              )
+            else
+              const SizedBox(height: 60),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    timer?.cancel();
+    bannerAd?.dispose();
+    interstitialAd?.dispose();
+    super.dispose();
+  }
+}
+
+class SnakePainter extends CustomPainter {
+  SnakePainter({
+    required this.snake,
+    required this.food,
+    required this.cols,
+    required this.rows,
+  });
+
+  final List<Point<int>> snake;
+  final Point<int> food;
+  final int cols;
+  final int rows;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final cellW = size.width / cols;
+    final cellH = size.height / rows;
+
+    final gridPaint = Paint()
+      ..color = const Color(0xFF18343B)
+      ..strokeWidth = 0.5;
+
+    for (int x = 1; x < cols; x++) {
+      canvas.drawLine(
+        Offset(x * cellW, 0),
+        Offset(x * cellW, size.height),
+        gridPaint,
+      );
+    }
+
+    for (int y = 1; y < rows; y++) {
+      canvas.drawLine(
+        Offset(0, y * cellH),
+        Offset(size.width, y * cellH),
+        gridPaint,
+      );
+    }
+
+    final foodPaint = Paint()
+      ..color = const Color(0xFFFF5577);
+
+    canvas.drawCircle(
+      Offset(
+        (food.x + 0.5) * cellW,
+        (food.y + 0.5) * cellH,
+      ),
+      min(cellW, cellH) * 0.34,
+      foodPaint,
+    );
+
+    for (int i = snake.length - 1; i >= 0; i--) {
+      final part = snake[i];
+
+      final rect = Rect.fromLTWH(
+        part.x * cellW + 1.5,
+        part.y * cellH + 1.5,
+        cellW - 3,
+        cellH - 3,
+      );
+
+      final paint = Paint()
+        ..color = i == 0
+            ? const Color(0xFF8CFFCB)
+            : const Color(0xFF00B879);
+
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          rect,
+          const Radius.circular(5),
+        ),
+        paint,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant SnakePainter oldDelegate) => true;
+}
+Swipe to control the snake',
                                       ),
                                       const SizedBox(height: 15),
                                       FilledButton(
