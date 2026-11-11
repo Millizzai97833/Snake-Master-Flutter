@@ -2,15 +2,15 @@
 import 'dart:async';
 import 'dart:math';
 
-import 'package:flutter/foundation.dart' show kDebugMode;
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:startapp_sdk/startapp.dart'
     show
         StartAppSdk,
         StartAppBannerAd,
-        StartAppInterstitialAd,
         StartAppBanner,
-        StartAppBannerType;
+        StartAppBannerType,
+        StartAppRewardedVideoAd;
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -54,8 +54,9 @@ class _SnakeGamePageState extends State<SnakeGamePage> {
   final StartAppSdk startAppSdk = StartAppSdk();
 
   Timer? timer;
+
   StartAppBannerAd? bannerAd;
-  StartAppInterstitialAd? interstitialAd;
+  StartAppRewardedVideoAd? rewardedAd;
 
   List<Point<int>> snake = [];
   Point<int> food = const Point(8, 12);
@@ -69,7 +70,15 @@ class _SnakeGamePageState extends State<SnakeGamePage> {
   bool started = false;
   bool paused = false;
   bool gameOver = false;
+
   bool adsInitialized = false;
+  bool bannerLoading = false;
+  bool bannerFailed = false;
+
+  bool rewardedLoading = false;
+  bool rewardedCompleted = false;
+  bool rewardedUsed = false;
+  bool rewardedShowing = false;
 
   @override
   void initState() {
@@ -77,6 +86,10 @@ class _SnakeGamePageState extends State<SnakeGamePage> {
     resetGame();
     initializeAds();
   }
+
+  // ---------------------------------------
+  // START.IO INITIALIZATION
+  // ---------------------------------------
 
   Future<void> initializeAds() async {
     try {
@@ -88,17 +101,34 @@ class _SnakeGamePageState extends State<SnakeGamePage> {
 
       adsInitialized = true;
 
-      await loadBanner();
-      await loadInterstitial();
+      loadBanner();
+      loadRewardedAd();
     } catch (e) {
       debugPrint('Start.io initialization error: $e');
     }
   }
 
+  // ---------------------------------------
+  // BANNER AD
+  // ---------------------------------------
+
   Future<void> loadBanner() async {
+    if (!mounted || bannerLoading || bannerAd != null) return;
+
+    setState(() {
+      bannerLoading = true;
+      bannerFailed = false;
+    });
+
     try {
       final ad = await startAppSdk.loadBannerAd(
         StartAppBannerType.BANNER,
+        onAdImpression: () {
+          debugPrint('Start.io banner impression.');
+        },
+        onAdClicked: () {
+          debugPrint('Start.io banner clicked.');
+        },
       );
 
       if (!mounted) {
@@ -106,58 +136,245 @@ class _SnakeGamePageState extends State<SnakeGamePage> {
         return;
       }
 
-      final oldAd = bannerAd;
-
       setState(() {
         bannerAd = ad;
+        bannerLoading = false;
+        bannerFailed = false;
       });
-
-      oldAd?.dispose();
     } catch (e) {
       debugPrint('Banner loading error: $e');
+
+      if (mounted) {
+        setState(() {
+          bannerLoading = false;
+          bannerFailed = true;
+        });
+      }
     }
   }
 
-  Future<void> loadInterstitial() async {
-    if (!adsInitialized) return;
+  Widget buildBannerArea() {
+    return Container(
+      width: double.infinity,
+      height: 60,
+      margin: const EdgeInsets.symmetric(horizontal: 10),
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: const Color(0xFF10262E),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: bannerAd != null
+          ? Center(
+              child: StartAppBanner(bannerAd!),
+            )
+          : bannerLoading
+              ? const Text(
+                  'Loading advertisement...',
+                  style: TextStyle(
+                    color: Colors.white54,
+                    fontSize: 11,
+                  ),
+                )
+              : Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(
+                      Icons.ads_click,
+                      size: 17,
+                      color: Colors.white54,
+                    ),
+                    const SizedBox(width: 7),
+                    const Text(
+                      'Advertisement',
+                      style: TextStyle(
+                        color: Colors.white54,
+                        fontSize: 11,
+                      ),
+                    ),
+                    if (bannerFailed)
+                      TextButton(
+                        onPressed: loadBanner,
+                        child: const Text('RETRY'),
+                      ),
+                  ],
+                ),
+    );
+  }
+
+  // ---------------------------------------
+  // REWARDED VIDEO AD
+  // ---------------------------------------
+
+  Future<void> loadRewardedAd() async {
+    if (!mounted ||
+        !adsInitialized ||
+        rewardedLoading ||
+        rewardedAd != null ||
+        rewardedUsed) {
+      return;
+    }
+
+    setState(() {
+      rewardedLoading = true;
+    });
 
     try {
-      final ad = await startAppSdk.loadInterstitialAd();
+      final ad = await startAppSdk.loadRewardedVideoAd(
+        onAdDisplayed: () {
+          debugPrint('Rewarded video displayed.');
+        },
+        onAdImpression: () {
+          debugPrint('Rewarded video impression.');
+        },
+        onVideoCompleted: () {
+          debugPrint('Rewarded video completed.');
+
+          rewardedCompleted = true;
+        },
+        onAdHidden: () {
+          debugPrint('Rewarded video closed.');
+
+          final oldAd = rewardedAd;
+          rewardedAd = null;
+          oldAd?.dispose();
+
+          if (!mounted) return;
+
+          setState(() {
+            rewardedShowing = false;
+            rewardedLoading = false;
+          });
+
+          if (rewardedCompleted) {
+            rewardedCompleted = false;
+            continueAfterReward();
+          } else {
+            loadRewardedAd();
+          }
+        },
+        onAdNotDisplayed: () {
+          debugPrint('Rewarded video was not displayed.');
+
+          final oldAd = rewardedAd;
+          rewardedAd = null;
+          oldAd?.dispose();
+
+          if (!mounted) return;
+
+          setState(() {
+            rewardedShowing = false;
+            rewardedLoading = false;
+          });
+
+          loadRewardedAd();
+        },
+      );
 
       if (!mounted) {
         ad.dispose();
         return;
       }
 
-      interstitialAd?.dispose();
-      interstitialAd = ad;
+      setState(() {
+        rewardedAd = ad;
+        rewardedLoading = false;
+      });
+
+      debugPrint('Rewarded video ready.');
     } catch (e) {
-      debugPrint('Interstitial loading error: $e');
-    }
-  }
-
-  Future<void> showInterstitial() async {
-    final ad = interstitialAd;
-
-    if (ad == null) {
-      debugPrint('Interstitial is not ready.');
-      return;
-    }
-
-    interstitialAd = null;
-
-    try {
-      await ad.show();
-    } catch (e) {
-      debugPrint('Interstitial display error: $e');
-    } finally {
-      ad.dispose();
+      debugPrint('Rewarded ad loading error: $e');
 
       if (mounted) {
-        await loadInterstitial();
+        setState(() {
+          rewardedLoading = false;
+        });
       }
     }
   }
+
+  Future<void> watchRewardedAd() async {
+    if (rewardedAd == null ||
+        rewardedShowing ||
+        rewardedUsed) {
+      return;
+    }
+
+    rewardedCompleted = false;
+
+    setState(() {
+      rewardedShowing = true;
+    });
+
+    try {
+      final shown = await rewardedAd!.show();
+
+      if (!shown && mounted) {
+        debugPrint('Rewarded video could not be shown.');
+
+        setState(() {
+          rewardedShowing = false;
+        });
+
+        final oldAd = rewardedAd;
+        rewardedAd = null;
+        oldAd?.dispose();
+
+        loadRewardedAd();
+      }
+    } catch (e) {
+      debugPrint('Rewarded video display error: $e');
+
+      if (mounted) {
+        setState(() {
+          rewardedShowing = false;
+        });
+      }
+
+      final oldAd = rewardedAd;
+      rewardedAd = null;
+      oldAd?.dispose();
+
+      loadRewardedAd();
+    }
+  }
+
+  // ---------------------------------------
+  // REWARD: CONTINUE GAME
+  // ---------------------------------------
+
+  void continueAfterReward() {
+    if (!mounted || !gameOver || rewardedUsed) return;
+
+    timer?.cancel();
+
+    snake = [
+      const Point(5, 10),
+      const Point(4, 10),
+      const Point(3, 10),
+    ];
+
+    food = newFood();
+
+    direction = Direction.right;
+    nextDirection = Direction.right;
+
+    rewardedUsed = true;
+
+    setState(() {
+      gameOver = false;
+      started = true;
+      paused = false;
+      rewardedLoading = false;
+    });
+
+    startTimer();
+
+    debugPrint('Player received one game revive.');
+  }
+
+  // ---------------------------------------
+  // GAME LOGIC
+  // ---------------------------------------
 
   Point<int> newFood() {
     Point<int> point;
@@ -187,13 +404,28 @@ class _SnakeGamePageState extends State<SnakeGamePage> {
     nextDirection = Direction.right;
 
     score = 0;
+
     started = false;
     paused = false;
     gameOver = false;
 
+    rewardedUsed = false;
+    rewardedCompleted = false;
+    rewardedShowing = false;
+
     if (mounted) {
       setState(() {});
+      loadRewardedAd();
     }
+  }
+
+  void startTimer() {
+    timer?.cancel();
+
+    timer = Timer.periodic(
+      Duration(milliseconds: max(75, 175 - score * 2)),
+      (_) => moveSnake(),
+    );
   }
 
   void startGame() {
@@ -208,12 +440,7 @@ class _SnakeGamePageState extends State<SnakeGamePage> {
       paused = false;
     });
 
-    timer?.cancel();
-
-    timer = Timer.periodic(
-      Duration(milliseconds: max(75, 175 - score * 2)),
-      (_) => moveSnake(),
-    );
+    startTimer();
   }
 
   void togglePause() {
@@ -226,10 +453,7 @@ class _SnakeGamePageState extends State<SnakeGamePage> {
     timer?.cancel();
 
     if (!paused) {
-      timer = Timer.periodic(
-        Duration(milliseconds: max(75, 175 - score * 2)),
-        (_) => moveSnake(),
-      );
+      startTimer();
     }
   }
 
@@ -281,7 +505,12 @@ class _SnakeGamePageState extends State<SnakeGamePage> {
         bestScore = max(bestScore, score);
       });
 
-      showInterstitial();
+      // No automatic interstitial here:
+      // the player gets the option to watch a rewarded video.
+      if (rewardedAd == null && !rewardedLoading) {
+        loadRewardedAd();
+      }
+
       return;
     }
 
@@ -313,6 +542,10 @@ class _SnakeGamePageState extends State<SnakeGamePage> {
       );
     }
   }
+
+  // ---------------------------------------
+  // UI COMPONENTS
+  // ---------------------------------------
 
   Widget directionButton(
     IconData icon,
@@ -359,6 +592,110 @@ class _SnakeGamePageState extends State<SnakeGamePage> {
     );
   }
 
+  Widget gameOverlay() {
+    if (started && !paused && !gameOver) {
+      return const SizedBox.shrink();
+    }
+
+    return Container(
+      color: Colors.black54,
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(8),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                gameOver
+                    ? 'GAME OVER'
+                    : paused
+                        ? 'PAUSED'
+                        : 'READY?',
+                style: const TextStyle(
+                  fontSize: 27,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF00E6A0),
+                ),
+              ),
+
+              const SizedBox(height: 10),
+
+              Text(
+                gameOver
+                    ? 'Your score: $score'
+                    : 'Swipe to control the snake',
+                textAlign: TextAlign.center,
+              ),
+
+              const SizedBox(height: 14),
+
+              // REWARDED VIDEO BUTTON
+              if (gameOver && !rewardedUsed) ...[
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed:
+                        rewardedAd != null && !rewardedShowing
+                            ? watchRewardedAd
+                            : null,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFF087B58),
+                      padding: const EdgeInsets.symmetric(
+                        vertical: 13,
+                      ),
+                    ),
+                    icon: const Icon(Icons.play_circle_fill),
+                    label: Text(
+                      rewardedShowing
+                          ? 'PLEASE WAIT...'
+                          : rewardedAd != null
+                              ? 'WATCH AD TO CONTINUE'
+                              : rewardedLoading
+                                  ? 'LOADING REWARD VIDEO...'
+                                  : 'REWARD AD UNAVAILABLE',
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 8),
+
+                if (rewardedAd == null &&
+                    !rewardedLoading &&
+                    !rewardedShowing)
+                  TextButton.icon(
+                    onPressed: loadRewardedAd,
+                    icon: const Icon(Icons.refresh, size: 17),
+                    label: const Text('RETRY REWARD AD'),
+                  ),
+
+                const SizedBox(height: 6),
+              ],
+
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  onPressed: startGame,
+                  child: Text(
+                    gameOver
+                        ? 'PLAY AGAIN'
+                        : paused
+                            ? 'RESUME'
+                            : 'START GAME',
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ---------------------------------------
+  // MAIN SCREEN
+  // ---------------------------------------
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -366,6 +703,7 @@ class _SnakeGamePageState extends State<SnakeGamePage> {
         child: Column(
           children: [
             const SizedBox(height: 15),
+
             const Text(
               'SNAKE MASTER',
               style: TextStyle(
@@ -375,10 +713,12 @@ class _SnakeGamePageState extends State<SnakeGamePage> {
                 color: Color(0xFF00E6A0),
               ),
             ),
+
             const Text(
               'EAT • GROW • SURVIVE',
               style: TextStyle(color: Colors.white54),
             ),
+
             Padding(
               padding: const EdgeInsets.all(18),
               child: Row(
@@ -389,6 +729,7 @@ class _SnakeGamePageState extends State<SnakeGamePage> {
                 ],
               ),
             ),
+
             Expanded(
               child: Center(
                 child: AspectRatio(
@@ -420,44 +761,8 @@ class _SnakeGamePageState extends State<SnakeGamePage> {
                                 rows: rows,
                               ),
                             ),
-                            if (!started || paused || gameOver)
-                              Container(
-                                color: Colors.black54,
-                                child: Center(
-                                  child: Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Text(
-                                        gameOver
-                                            ? 'GAME OVER'
-                                            : paused
-                                                ? 'PAUSED'
-                                                : 'READY?',
-                                        style: const TextStyle(
-                                          fontSize: 27,
-                                          fontWeight: FontWeight.bold,
-                                          color: Color(0xFF00E6A0),
-                                        ),
-                                      ),
-                                      const SizedBox(height: 10),
-                                      Text(
-                                        gameOver
-                                            ? 'Your score: $score'
-                                            : 'Swipe to control the snake',
-                                      ),
-                                      const SizedBox(height: 15),
-                                      FilledButton(
-                                        onPressed: startGame,
-                                        child: Text(
-                                          gameOver
-                                              ? 'PLAY AGAIN'
-                                              : 'START GAME',
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
+
+                            gameOverlay(),
                           ],
                         ),
                       ),
@@ -466,11 +771,14 @@ class _SnakeGamePageState extends State<SnakeGamePage> {
                 ),
               ),
             ),
+
             const SizedBox(height: 12),
+
             directionButton(
               Icons.keyboard_arrow_up,
               Direction.up,
             ),
+
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
@@ -478,18 +786,23 @@ class _SnakeGamePageState extends State<SnakeGamePage> {
                   Icons.keyboard_arrow_left,
                   Direction.left,
                 ),
+
                 const SizedBox(width: 58),
+
                 directionButton(
                   Icons.keyboard_arrow_right,
                   Direction.right,
                 ),
               ],
             ),
+
             directionButton(
               Icons.keyboard_arrow_down,
               Direction.down,
             ),
+
             const SizedBox(height: 10),
+
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
@@ -502,112 +815,9 @@ class _SnakeGamePageState extends State<SnakeGamePage> {
                     paused ? 'RESUME' : 'PAUSE',
                   ),
                 ),
+
                 const SizedBox(width: 12),
+
                 OutlinedButton.icon(
                   onPressed: resetGame,
                   icon: const Icon(Icons.refresh),
-                  label: const Text('RESTART'),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            if (bannerAd != null)
-              SizedBox(
-                height: 60,
-                child: StartAppBanner(bannerAd!),
-              )
-            else
-              const SizedBox(height: 60),
-          ],
-        ),
-      ),
-    );
-  }
-
-  @override
-  void dispose() {
-    timer?.cancel();
-    bannerAd?.dispose();
-    interstitialAd?.dispose();
-    super.dispose();
-  }
-}
-
-class SnakePainter extends CustomPainter {
-  SnakePainter({
-    required this.snake,
-    required this.food,
-    required this.cols,
-    required this.rows,
-  });
-
-  final List<Point<int>> snake;
-  final Point<int> food;
-  final int cols;
-  final int rows;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final cellW = size.width / cols;
-    final cellH = size.height / rows;
-
-    final gridPaint = Paint()
-      ..color = const Color(0xFF18343B)
-      ..strokeWidth = 0.5;
-
-    for (int x = 1; x < cols; x++) {
-      canvas.drawLine(
-        Offset(x * cellW, 0),
-        Offset(x * cellW, size.height),
-        gridPaint,
-      );
-    }
-
-    for (int y = 1; y < rows; y++) {
-      canvas.drawLine(
-        Offset(0, y * cellH),
-        Offset(size.width, y * cellH),
-        gridPaint,
-      );
-    }
-
-    final foodPaint = Paint()
-      ..color = const Color(0xFFFF5577);
-
-    canvas.drawCircle(
-      Offset(
-        (food.x + 0.5) * cellW,
-        (food.y + 0.5) * cellH,
-      ),
-      min(cellW, cellH) * 0.34,
-      foodPaint,
-    );
-
-    for (int i = snake.length - 1; i >= 0; i--) {
-      final part = snake[i];
-
-      final rect = Rect.fromLTWH(
-        part.x * cellW + 1.5,
-        part.y * cellH + 1.5,
-        cellW - 3,
-        cellH - 3,
-      );
-
-      final paint = Paint()
-        ..color = i == 0
-            ? const Color(0xFF8CFFCB)
-            : const Color(0xFF00B879);
-
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(
-          rect,
-          const Radius.circular(5),
-        ),
-        paint,
-      );
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant SnakePainter oldDelegate) => true;
-}
