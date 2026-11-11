@@ -1,3 +1,4 @@
+
 name: Build Snake Master APK
 
 on:
@@ -27,7 +28,11 @@ jobs:
           cache: true
 
       - name: Create Android project
-        run: flutter create --platforms=android --org com.shahabmillizai --project-name snakemaster .
+        run: |
+          flutter create \
+            --platforms=android \
+            --org com.shahabmillizai \
+            --project-name snakemaster .
 
       - name: Set Android Compile SDK to 36
         run: |
@@ -68,7 +73,7 @@ jobs:
               raise SystemExit("Android Gradle file not found")
           PY
 
-      - name: Configure Start.io App ID
+      - name: Configure Start.io and Internet Permissions
         env:
           STARTIO_APP_ID: ${{ secrets.STARTIO_APP_ID }}
         run: |
@@ -80,9 +85,14 @@ jobs:
           app_id = os.environ.get("STARTIO_APP_ID", "").strip()
 
           if not app_id:
-              raise SystemExit("STARTIO_APP_ID secret is missing")
+              raise SystemExit("ERROR: STARTIO_APP_ID secret is missing")
 
-          manifest = Path("android/app/src/main/AndroidManifest.xml")
+          manifest = Path(
+              "android/app/src/main/AndroidManifest.xml"
+          )
+
+          if not manifest.exists():
+              raise SystemExit("Android manifest not found")
 
           ET.register_namespace(
               "android",
@@ -93,11 +103,32 @@ jobs:
 
           tree = ET.parse(manifest)
           root = tree.getroot()
+
+          # Add required network permissions.
+          required_permissions = [
+              "android.permission.INTERNET",
+              "android.permission.ACCESS_NETWORK_STATE",
+              "android.permission.ACCESS_WIFI_STATE"
+          ]
+
+          existing_permissions = {
+              item.get(android + "name")
+              for item in root.findall("uses-permission")
+          }
+
+          for permission in required_permissions:
+              if permission not in existing_permissions:
+                  item = ET.Element("uses-permission")
+                  item.set(android + "name", permission)
+                  root.insert(0, item)
+
+          # Find Android application element.
           application = root.find("application")
 
           if application is None:
               raise SystemExit("Application element not found")
 
+          # Configure Start.io App ID.
           key = "com.startapp.sdk.APPLICATION_ID"
           meta = None
 
@@ -118,10 +149,40 @@ jobs:
               xml_declaration=True
           )
 
-          print("Start.io App ID configured")
+          # Verify the final generated manifest.
+          check_tree = ET.parse(manifest)
+          check_root = check_tree.getroot()
+
+          final_permissions = {
+              item.get(android + "name")
+              for item in check_root.findall("uses-permission")
+          }
+
+          for permission in required_permissions:
+              if permission not in final_permissions:
+                  raise SystemExit(
+                      "Missing permission: " + permission
+                  )
+
+          check_application = check_root.find("application")
+
+          found_app_id = False
+
+          for item in check_application.findall("meta-data"):
+              if item.get(android + "name") == key:
+                  if item.get(android + "value") == app_id:
+                      found_app_id = True
+
+          if not found_app_id:
+              raise SystemExit("Start.io App ID verification failed")
+
+          print("SUCCESS: Start.io App ID configured")
+          print("SUCCESS: Internet permission configured")
+          print("SUCCESS: Network state permission configured")
+          print("SUCCESS: WiFi state permission configured")
           PY
 
-      - name: Get dependencies
+      - name: Get Flutter dependencies
         run: flutter pub get
 
       - name: Set Start.io plugin Compile SDK to 36
@@ -171,6 +232,11 @@ jobs:
 
       - name: Build release APK
         run: flutter build apk --release
+
+      - name: Verify APK exists
+        run: |
+          test -f build/app/outputs/flutter-apk/app-release.apk
+          ls -lh build/app/outputs/flutter-apk/app-release.apk
 
       - name: Upload release APK
         uses: actions/upload-artifact@v4
