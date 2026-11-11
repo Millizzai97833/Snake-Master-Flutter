@@ -825,4 +825,152 @@ class _SnakeGamePageState extends State<SnakeGamePage> {
                         color: const Color(0xFF0D2028),
                         borderRadius: BorderRadius.circular(16),
                         border: Border.all(
-                          color: const 
+                          Color(0xFF00E6A0),
+                          width: 1.5,
+                        ),
+                      ),
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          CustomPaint(
+                            painter: SnakePainter(
+                              snake: snake,
+                              food: food,
+                              cols: cols,
+                              rows: rows,
+                            ),
+                          ),
+                          gameOverlay(),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 8),
+
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                directionButton(Icons.arrow_upward, Direction.up),
+              ],
+            ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                directionButton(Icons.arrow_back, Direction.left),
+                const SizedBox(width: 12),
+                directionButton(Icons.arrow_downward, Direction.down),
+                const SizedBox(width: 12),
+                directionButton(Icons.arrow_forward, Direction.right),
+              ],
+            ),
+
+            Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 20,
+                vertical: 8,
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: FilledButton.tonal(
+                      onPressed: togglePause,
+                      child: Text(paused ? 'RESUME' : 'PAUSE'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            bannerPlacement(),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class SnakePainter extends CustomPainter {
+  final List<Point<int>> snake;
+  final Point<int> food;
+  final int cols;
+  final int rows;
+
+  SnakePainter({
+    required this.snake,
+    required this.food,
+    required this.cols,
+    required this.rows,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final cellWidth = size.width / cols;
+    final cellHeight = size.height / rows;
+
+    final gridPaint = Paint()
+      ..color = const Color(0xFF19313A)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 0.4;
+
+    for (int x = 0; x <= cols; x++) {
+      canvas.drawLine(
+        Offset(x * cellWidth, 0),
+        Offset(x * cellWidth, size.height),
+        gridPaint,
+      );
+    }
+
+    for (int y = 0; y <= rows; y++) {
+      canvas.drawLine(
+        Offset(0, y * cellHeight),
+        Offset(size.width, y * cellHeight),
+        gridPaint,
+      );
+    }
+
+    final foodPaint = Paint()
+      ..color = const Color(0xFFFF5252);
+
+    canvas.drawCircle(
+      Offset(
+        (food.x + 0.5) * cellWidth,
+        (food.y + 0.5) * cellHeight,
+      ),
+      cellWidth * 0.36,
+      foodPaint,
+    );
+
+    for (int i = 0; i < snake.length; i++) {
+      final segment = snake[i];
+
+      final rect = Rect.fromLTWH(
+        segment.x * cellWidth + 1,
+        segment.y * cellHeight + 1,
+        cellWidth - 2,
+        cellHeight - 2,
+      );
+
+      final paint = Paint()
+        ..color = i == 0
+            ? const Color(0xFF00E6A0)
+            : const Color(0xFF00A878);
+
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          rect,
+          Radius.circular(cellWidth * 0.2),
+        ),
+        paint,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant SnakePainter oldDelegate) {
+    return true;
+  }
+} 
