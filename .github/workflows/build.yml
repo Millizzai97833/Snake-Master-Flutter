@@ -182,9 +182,8 @@ jobs:
           print("SUCCESS: WiFi state permission configured")
           PY
 
-      - name: Get Flutter dependencies
-        run: flutter pub get
-
+            - name: Analyze Flutter code
+        run: flutter analyze --no-fatal-infos
       - name: Set Start.io plugin Compile SDK to 36
         run: |
           python3 - <<'PY'
