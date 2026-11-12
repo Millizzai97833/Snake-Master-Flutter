@@ -1,11 +1,11 @@
 
-import 'package:url_launcher/url_launcher.dart';
 import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:startapp_sdk/startapp.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -45,6 +45,10 @@ class SnakeGamePage extends StatefulWidget {
 class _SnakeGamePageState extends State<SnakeGamePage> {
   static const int cols = 18;
   static const int rows = 24;
+
+  static final Uri sponsorUri = Uri.parse(
+    'https://auctionr.org/4/734126bad0bd8538a4233f18e7855d55',
+  );
 
   final Random random = Random();
   final StartAppSdk startAppSdk = StartAppSdk();
@@ -102,6 +106,46 @@ class _SnakeGamePageState extends State<SnakeGamePage> {
       loadRewarded();
     } catch (error) {
       debugPrint('Start.io initialization error: $error');
+    }
+  }
+
+  // ADSTERRA SPONSOR LINK
+
+  Future<void> openSponsorLink() async {
+    if (!mounted) return;
+
+    // Pause the running game before opening the sponsor link.
+    if (started && !paused && !gameOver) {
+      timer?.cancel();
+
+      setState(() {
+        paused = true;
+      });
+    }
+
+    try {
+      final opened = await launchUrl(
+        sponsorUri,
+        mode: LaunchMode.externalApplication,
+      );
+
+      if (!opened && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not open sponsor link.'),
+          ),
+        );
+      }
+    } catch (error) {
+      debugPrint('Sponsor link error: $error');
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not open sponsor link.'),
+          ),
+        );
+      }
     }
   }
 
@@ -801,6 +845,7 @@ class _SnakeGamePageState extends State<SnakeGamePage> {
                 fontSize: 11,
               ),
             ),
+            
             Padding(
               padding: const EdgeInsets.all(12),
               child: Row(
@@ -835,7 +880,6 @@ class _SnakeGamePageState extends State<SnakeGamePage> {
                       child: Stack(
                         fit: StackFit.expand,
                         children: [
-         
                           CustomPaint(
                             painter: SnakePainter(
                               snake: snake,
@@ -989,4 +1033,3 @@ class SnakePainter extends CustomPainter {
     return true;
   }
 }
-
