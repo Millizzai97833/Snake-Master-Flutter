@@ -85,7 +85,7 @@ jobs:
           app_id = os.environ.get("STARTIO_APP_ID", "").strip()
 
           if not app_id:
-              raise SystemExit("ERROR: STARTIO_APP_ID secret is missing")
+              raise SystemExit("STARTIO_APP_ID secret is missing")
 
           manifest = Path(
               "android/app/src/main/AndroidManifest.xml"
@@ -104,7 +104,6 @@ jobs:
           tree = ET.parse(manifest)
           root = tree.getroot()
 
-          # Add required network permissions.
           required_permissions = [
               "android.permission.INTERNET",
               "android.permission.ACCESS_NETWORK_STATE",
@@ -122,13 +121,11 @@ jobs:
                   item.set(android + "name", permission)
                   root.insert(0, item)
 
-          # Find Android application element.
           application = root.find("application")
 
           if application is None:
               raise SystemExit("Application element not found")
 
-          # Configure Start.io App ID.
           key = "com.startapp.sdk.APPLICATION_ID"
           meta = None
 
@@ -149,7 +146,6 @@ jobs:
               xml_declaration=True
           )
 
-          # Verify the final generated manifest.
           check_tree = ET.parse(manifest)
           check_root = check_tree.getroot()
 
@@ -182,8 +178,9 @@ jobs:
           print("SUCCESS: WiFi state permission configured")
           PY
 
-            - name: Analyze Flutter code
-        run: flutter analyze --no-fatal-infos
+      - name: Get Flutter dependencies
+        run: flutter pub get
+
       - name: Set Start.io plugin Compile SDK to 36
         run: |
           python3 - <<'PY'
@@ -227,7 +224,7 @@ jobs:
         run: rm -f test/widget_test.dart
 
       - name: Analyze Flutter code
-        run: flutter analyze
+        run: flutter analyze --no-fatal-infos
 
       - name: Build release APK
         run: flutter build apk --release
@@ -242,3 +239,4 @@ jobs:
         with:
           name: Snake-Master-Release-APK
           path: build/app/outputs/flutter-apk/app-release.apk
+          
