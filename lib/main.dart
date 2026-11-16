@@ -853,3 +853,141 @@ class _SnakeGamePageState extends State<SnakeGamePage> {
                     ),
                     label: Text(
                       
+                      paused ? 'RESUME' : 'PAUSE',
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  FilledButton.icon(
+                    onPressed: resetGame,
+                    icon: const Icon(Icons.refresh),
+                    label: const Text('NEW GAME'),
+                  ),
+                ],
+              ),
+            ),
+
+            Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 20,
+              ),
+              child: SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: openSponsorLink,
+                  icon: const Icon(Icons.open_in_browser),
+                  label: const Text('VISIT SPONSOR'),
+                ),
+              ),
+            ),
+
+            bannerPlacement(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // -----------------------------
+  // CLEANUP
+  // -----------------------------
+
+  @override
+  void dispose() {
+    timer?.cancel();
+
+    bannerStateSubscription?.cancel();
+    bannerEventSubscription?.cancel();
+
+    bannerAd?.destroy();
+    interstitialAd?.destroy();
+    rewardedAd?.destroy();
+
+    super.dispose();
+  }
+}
+
+// -----------------------------
+// SNAKE GAME GRAPHICS
+// -----------------------------
+
+class SnakePainter extends CustomPainter {
+  final List<Point<int>> snake;
+  final Point<int> food;
+  final int cols;
+  final int rows;
+
+  SnakePainter({
+    required this.snake,
+    required this.food,
+    required this.cols,
+    required this.rows,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final cellWidth = size.width / cols;
+    final cellHeight = size.height / rows;
+
+    final gridPaint = Paint()
+      ..color = Colors.white.withValues(alpha: 0.05)
+      ..strokeWidth = 0.5;
+
+    for (int x = 0; x <= cols; x++) {
+      canvas.drawLine(
+        Offset(x * cellWidth, 0),
+        Offset(x * cellWidth, size.height),
+        gridPaint,
+      );
+    }
+
+    for (int y = 0; y <= rows; y++) {
+      canvas.drawLine(
+        Offset(0, y * cellHeight),
+        Offset(size.width, y * cellHeight),
+        gridPaint,
+      );
+    }
+
+    final foodPaint = Paint()
+      ..color = Colors.redAccent;
+
+    canvas.drawCircle(
+      Offset(
+        (food.x + 0.5) * cellWidth,
+        (food.y + 0.5) * cellHeight,
+      ),
+      min(cellWidth, cellHeight) * 0.38,
+      foodPaint,
+    );
+
+    for (int i = 0; i < snake.length; i++) {
+      final part = snake[i];
+
+      final rect = Rect.fromLTWH(
+        part.x * cellWidth + 1,
+        part.y * cellHeight + 1,
+        cellWidth - 2,
+        cellHeight - 2,
+      );
+
+      final snakePaint = Paint()
+        ..color = i == 0
+            ? const Color(0xFF00E6A0)
+            : const Color(0xFF00A878);
+
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          rect,
+          const Radius.circular(4),
+        ),
+        snakePaint,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant SnakePainter oldDelegate) {
+    return true;
+  }
+}
+
