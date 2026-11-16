@@ -857,3 +857,107 @@ class _SnakeGamePageState extends State<SnakeGamePage> {
               child: Row(
                 children: [
     
+      Expanded(
+        child: Text(
+          'SCORE: $score',
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ),
+      Text(
+        'BEST: $bestScore',
+        style: const TextStyle(
+          color: Colors.amber,
+          fontSize: 18,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+    ],
+  ),
+  const SizedBox(height: 12),
+
+  Expanded(
+    child: Center(
+      child: AspectRatio(
+        aspectRatio: 18 / 24,
+        child: Container(
+          decoration: BoxDecoration(
+            color: Colors.black,
+            border: Border.all(color: Colors.green, width: 2),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(6),
+            child: CustomPaint(
+              painter: SnakePainter(
+                snake: snake,
+                food: food,
+                columns: columns,
+                rows: rows,
+              ),
+              child: const SizedBox.expand(),
+            ),
+          ),
+        ),
+      ),
+    ),
+  ),
+
+  const SizedBox(height: 12),
+
+  Row(
+    mainAxisAlignment: MainAxisAlignment.center,
+    children: [
+      IconButton(
+        onPressed: isGameOver ? null : togglePause,
+        icon: Icon(
+          isPaused ? Icons.play_arrow : Icons.pause,
+          color: Colors.white,
+          size: 32,
+        ),
+      ),
+      const SizedBox(width: 20),
+      ElevatedButton(
+        onPressed: startNewGame,
+        child: const Text('NEW GAME'),
+      ),
+      const SizedBox(width: 20),
+      IconButton(
+        onPressed: isGameOver ? showRewardedAd : null,
+        icon: const Icon(
+          Icons.video_library,
+          color: Colors.amber,
+          size: 30,
+        ),
+      ),
+    ],
+  ),
+
+  const SizedBox(height: 10),
+
+  _buildControls(),
+
+  const SizedBox(height: 12),
+
+  SizedBox(
+    width: double.infinity,
+    child: ElevatedButton.icon(
+      onPressed: openSponsor,
+      icon: const Icon(Icons.open_in_browser),
+      label: const Text('VISIT SPONSOR'),
+    ),
+  ),
+
+  const SizedBox(height: 10),
+
+  if (bannerAd != null)
+    SizedBox(
+      height: bannerAd!.adSize.height.toDouble(),
+      child: AdWidget(bannerAd: bannerAd!),
+    )
+  else
+    const SizedBox(height: 50),
+],
