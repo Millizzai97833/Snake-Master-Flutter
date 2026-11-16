@@ -11,7 +11,7 @@ Future<void> main() async {
 
   try {
     await YandexAds.initialize();
-    debugPrint('Yandex Ads initialized successfully');
+    debugPrint('Yandex Ads initialized');
   } catch (e) {
     debugPrint('Yandex initialization error: $e');
   }
@@ -53,7 +53,7 @@ class _SnakeGamePageState extends State<SnakeGamePage> {
   static const int cols = 18;
   static const int rows = 24;
 
-  // YANDEX AD UNIT IDS
+  // Yandex ad unit IDs
   static const String bannerId = 'R-M-20409416-2';
   static const String rewardedId = 'R-M-20409416-1';
   static const String interstitialId = 'R-M-20409416-3';
@@ -86,12 +86,10 @@ class _SnakeGamePageState extends State<SnakeGamePage> {
   bool paused = false;
   bool gameOver = false;
 
-  // AD OBJECTS
   BannerAd? bannerAd;
   InterstitialAd? interstitialAd;
   RewardedAd? rewardedAd;
 
-  // AD STATUS
   bool bannerReady = false;
   bool bannerRequested = false;
   bool interstitialLoading = false;
@@ -119,21 +117,18 @@ class _SnakeGamePageState extends State<SnakeGamePage> {
     }
   }
 
-  // ==========================================
+  // -----------------------------
   // YANDEX BANNER AD
-  // ==========================================
+  // -----------------------------
 
   void loadBanner() {
     if (bannerAd != null) return;
 
     try {
-      final screenWidth =
-          MediaQuery.of(context).size.width.round();
+      final width = MediaQuery.of(context).size.width.round();
 
       final banner = BannerAd(
-        adSize: BannerAdSize.sticky(
-          width: screenWidth,
-        ),
+        adSize: BannerAdSize.sticky(width: width),
       );
 
       bannerStateSubscription =
@@ -141,30 +136,25 @@ class _SnakeGamePageState extends State<SnakeGamePage> {
         if (!mounted) return;
 
         if (state is BannerAdLoadStateLoaded) {
-          debugPrint('Yandex banner loaded');
-
+          debugPrint('Banner loaded');
           setState(() {
             bannerReady = true;
           });
         } else if (state is BannerAdLoadStateError) {
-          debugPrint(
-            'Yandex banner error: ${state.error.description}',
-          );
-
+          debugPrint('Banner error: ${state.error.description}');
           setState(() {
             bannerReady = false;
           });
         }
       });
 
-      bannerEventSubscription =
-          banner.events.listen((event) {
+      bannerEventSubscription = banner.events.listen((event) {
         if (event is BannerAdClickedEvent) {
-          debugPrint('Yandex banner clicked');
+          debugPrint('Banner clicked');
         }
 
         if (event is BannerAdImpressionEvent) {
-          debugPrint('Yandex banner impression');
+          debugPrint('Banner impression');
         }
       });
 
@@ -202,9 +192,9 @@ class _SnakeGamePageState extends State<SnakeGamePage> {
     );
   }
 
-  // ==========================================
+  // -----------------------------
   // YANDEX INTERSTITIAL AD
-  // ==========================================
+  // -----------------------------
 
   Future<void> loadInterstitial() async {
     if (interstitialLoading || interstitialAd != null) {
@@ -226,8 +216,7 @@ class _SnakeGamePageState extends State<SnakeGamePage> {
       }
 
       interstitialAd = ad;
-
-      debugPrint('Yandex interstitial loaded');
+      debugPrint('Interstitial loaded');
     } on AdRequestError catch (e) {
       debugPrint('Interstitial loading error: ${e.description}');
     } catch (e) {
@@ -259,9 +248,7 @@ class _SnakeGamePageState extends State<SnakeGamePage> {
           debugPrint('Interstitial impression: $data');
         },
         onAdFailedToShow: (error) {
-          debugPrint(
-            'Interstitial display error: ${error.description}',
-          );
+          debugPrint('Interstitial show error: ${error.description}');
         },
         onAdDismissed: () {
           debugPrint('Interstitial dismissed');
@@ -273,7 +260,7 @@ class _SnakeGamePageState extends State<SnakeGamePage> {
       await ad.show();
       await ad.waitForDismiss();
     } catch (e) {
-      debugPrint('Interstitial show error: $e');
+      debugPrint('Interstitial error: $e');
     } finally {
       ad.destroy();
 
@@ -283,9 +270,9 @@ class _SnakeGamePageState extends State<SnakeGamePage> {
     }
   }
 
-  // ==========================================
-  // YANDEX REWARDED VIDEO AD
-  // ==========================================
+  // -----------------------------
+  // YANDEX REWARDED AD
+  // -----------------------------
 
   Future<void> loadRewarded() async {
     if (rewardedLoading ||
@@ -309,8 +296,7 @@ class _SnakeGamePageState extends State<SnakeGamePage> {
       }
 
       rewardedAd = ad;
-
-      debugPrint('Yandex rewarded ad loaded');
+      debugPrint('Rewarded ad loaded');
 
       setState(() {});
     } on AdRequestError catch (e) {
@@ -352,16 +338,14 @@ class _SnakeGamePageState extends State<SnakeGamePage> {
           debugPrint('Rewarded impression: $data');
         },
         onAdFailedToShow: (error) {
-          debugPrint(
-            'Rewarded display error: ${error.description}',
-          );
+          debugPrint('Rewarded show error: ${error.description}');
         },
         onAdDismissed: () {
           debugPrint('Rewarded ad dismissed');
         },
         onRewarded: (reward) {
           debugPrint(
-            'Reward earned: ${reward.amount} ${reward.type}',
+            'Reward received: ${reward.amount} ${reward.type}',
           );
         },
       ),
@@ -380,7 +364,7 @@ class _SnakeGamePageState extends State<SnakeGamePage> {
         }
       }
     } catch (e) {
-      debugPrint('Rewarded show error: $e');
+      debugPrint('Rewarded error: $e');
     } finally {
       ad.destroy();
 
@@ -394,9 +378,9 @@ class _SnakeGamePageState extends State<SnakeGamePage> {
     }
   }
 
-  // ==========================================
+  // -----------------------------
   // SPONSOR LINK
-  // ==========================================
+  // -----------------------------
 
   Future<void> openSponsorLink() async {
     if (started && !paused && !gameOver) {
@@ -425,9 +409,9 @@ class _SnakeGamePageState extends State<SnakeGamePage> {
     }
   }
 
-  // ==========================================
+  // -----------------------------
   // GAME LOGIC
-  // ==========================================
+  // -----------------------------
 
   Point<int> createFood() {
     Point<int> position;
@@ -559,7 +543,6 @@ class _SnakeGamePageState extends State<SnakeGamePage> {
         finishedGames++;
       });
 
-      // Show an interstitial after every 3 games.
       if (finishedGames % 3 == 0) {
         showInterstitial();
       }
@@ -623,9 +606,23 @@ class _SnakeGamePageState extends State<SnakeGamePage> {
     }
   }
 
-  // ==========================================
-  // GAME UI
-  // ==========================================
+  // -----------------------------
+  // GAME CONTROLS
+  // -----------------------------
+
+  Widget directionButton(
+    IconData icon,
+    Direction newDirection,
+  ) {
+    return SizedBox(
+      width: 56,
+      height: 46,
+      child: FilledButton.tonal(
+        onPressed: () => changeDirection(newDirection),
+        child: Icon(icon, size: 26),
+      ),
+    );
+  }
 
   Widget scoreCard(String title, int value) {
     return Expanded(
@@ -639,7 +636,9 @@ class _SnakeGamePageState extends State<SnakeGamePage> {
           children: [
             Text(
               title,
-              style: const TextStyle(color: Colors.white54),
+              style: const TextStyle(
+                color: Colors.white54,
+              ),
             ),
             Text(
               '$value',
@@ -651,20 +650,6 @@ class _SnakeGamePageState extends State<SnakeGamePage> {
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget directionButton(
-    IconData icon,
-    Direction newDirection,
-  ) {
-    return SizedBox(
-      width: 56,
-      height: 46,
-      child: FilledButton.tonal(
-        onPressed: () => changeDirection(newDirection),
-        child: Icon(icon, size: 26),
       ),
     );
   }
@@ -741,6 +726,10 @@ class _SnakeGamePageState extends State<SnakeGamePage> {
       ),
     );
   }
+
+  // -----------------------------
+  // MAIN GAME SCREEN
+  // -----------------------------
 
   @override
   Widget build(BuildContext context) {
@@ -855,109 +844,12 @@ class _SnakeGamePageState extends State<SnakeGamePage> {
                 vertical: 8,
               ),
               child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-    
-      Expanded(
-        child: Text(
-          'SCORE: $score',
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-      ),
-      Text(
-        'BEST: $bestScore',
-        style: const TextStyle(
-          color: Colors.amber,
-          fontSize: 18,
-          fontWeight: FontWeight.bold,
-        ),
-      ),
-    ],
-  ),
-  const SizedBox(height: 12),
-
-  Expanded(
-    child: Center(
-      child: AspectRatio(
-        aspectRatio: 18 / 24,
-        child: Container(
-          decoration: BoxDecoration(
-            color: Colors.black,
-            border: Border.all(color: Colors.green, width: 2),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(6),
-            child: CustomPaint(
-              painter: SnakePainter(
-                snake: snake,
-                food: food,
-                columns: columns,
-                rows: rows,
-              ),
-              child: const SizedBox.expand(),
-            ),
-          ),
-        ),
-      ),
-    ),
-  ),
-
-  const SizedBox(height: 12),
-
-  Row(
-    mainAxisAlignment: MainAxisAlignment.center,
-    children: [
-      IconButton(
-        onPressed: isGameOver ? null : togglePause,
-        icon: Icon(
-          isPaused ? Icons.play_arrow : Icons.pause,
-          color: Colors.white,
-          size: 32,
-        ),
-      ),
-      const SizedBox(width: 20),
-      ElevatedButton(
-        onPressed: startNewGame,
-        child: const Text('NEW GAME'),
-      ),
-      const SizedBox(width: 20),
-      IconButton(
-        onPressed: isGameOver ? showRewardedAd : null,
-        icon: const Icon(
-          Icons.video_library,
-          color: Colors.amber,
-          size: 30,
-        ),
-      ),
-    ],
-  ),
-
-  const SizedBox(height: 10),
-
-  _buildControls(),
-
-  const SizedBox(height: 12),
-
-  SizedBox(
-    width: double.infinity,
-    child: ElevatedButton.icon(
-      onPressed: openSponsor,
-      icon: const Icon(Icons.open_in_browser),
-      label: const Text('VISIT SPONSOR'),
-    ),
-  ),
-
-  const SizedBox(height: 10),
-
-  if (bannerAd != null)
-    SizedBox(
-      height: bannerAd!.adSize.height.toDouble(),
-      child: AdWidget(bannerAd: bannerAd!),
-    )
-  else
-    const SizedBox(height: 50),
-],
+                  FilledButton.icon(
+                    onPressed: togglePause,
+                    icon: Icon(
+                      paused ? Icons.play_arrow : Icons.pause,
+                    ),
+                    label: Text(
+                      
