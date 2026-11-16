@@ -2,13 +2,20 @@
 import 'dart:async';
 import 'dart:math';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:startapp_sdk/startapp.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:yandex_mobileads/mobile_ads.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  try {
+    await YandexAds.initialize();
+    debugPrint('Yandex Ads initialized successfully');
+  } catch (e) {
+    debugPrint('Yandex initialization error: $e');
+  }
+
   runApp(const SnakeMasterApp());
 }
 
@@ -46,12 +53,22 @@ class _SnakeGamePageState extends State<SnakeGamePage> {
   static const int cols = 18;
   static const int rows = 24;
 
+  // YANDEX AD UNIT IDS
+  static const String bannerId = 'R-M-20409416-2';
+  static const String rewardedId = 'R-M-20409416-1';
+  static const String interstitialId = 'R-M-20409416-3';
+
   static final Uri sponsorUri = Uri.parse(
     'https://auctionr.org/4/734126bad0bd8538a4233f18e7855d55',
   );
 
   final Random random = Random();
-  final StartAppSdk startAppSdk = StartAppSdk();
+
+  final InterstitialAdLoader interstitialLoader =
+      InterstitialAdLoader();
+
+  final RewardedAdLoader rewardedLoader =
+      RewardedAdLoader();
 
   Timer? timer;
 
@@ -68,53 +85,320 @@ class _SnakeGamePageState extends State<SnakeGamePage> {
   bool started = false;
   bool paused = false;
   bool gameOver = false;
-  bool adsReady = false;
 
-  StartAppBannerAd? bannerAd;
-  StartAppInterstitialAd? interstitialAd;
-  StartAppNativeAd? nativeAd;
-  StartAppRewardedVideoAd? rewardedAd;
+  // AD OBJECTS
+  BannerAd? bannerAd;
+  InterstitialAd? interstitialAd;
+  RewardedAd? rewardedAd;
 
-  bool bannerLoading = false;
+  // AD STATUS
+  bool bannerReady = false;
+  bool bannerRequested = false;
   bool interstitialLoading = false;
-  bool nativeLoading = false;
   bool rewardedLoading = false;
   bool rewardedShowing = false;
+
+  StreamSubscription? bannerStateSubscription;
+  StreamSubscription? bannerEventSubscription;
 
   @override
   void initState() {
     super.initState();
     resetGame();
-    initializeAds();
+    loadInterstitial();
+    loadRewarded();
   }
 
-  // START.IO INITIALIZATION
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
 
-  Future<void> initializeAds() async {
-    try {
-      await startAppSdk.setTestAdsEnabled(kDebugMode);
-
-      if (!mounted) return;
-
-      setState(() {
-        adsReady = true;
-      });
-
+    if (!bannerRequested) {
+      bannerRequested = true;
       loadBanner();
-      loadInterstitial();
-      loadNative();
-      loadRewarded();
-    } catch (error) {
-      debugPrint('Start.io initialization error: $error');
     }
   }
 
-  // ADSTERRA SPONSOR LINK
+  // ==========================================
+  // YANDEX BANNER AD
+  // ==========================================
+
+  void loadBanner() {
+    if (bannerAd != null) return;
+
+    try {
+      final screenWidth =
+          MediaQuery.of(context).size.width.round();
+
+      final banner = BannerAd(
+        adSize: BannerAdSize.sticky(
+          width: screenWidth,
+        ),
+      );
+
+      bannerStateSubscription =
+          banner.loadStateStream.listen((state) {
+        if (!mounted) return;
+
+        if (state is BannerAdLoadStateLoaded) {
+          debugPrint('Yandex banner loaded');
+
+          setState(() {
+            bannerReady = true;
+          });
+        } else if (state is BannerAdLoadStateError) {
+          debugPrint(
+            'Yandex banner error: ${state.error.description}',
+          );
+
+          setState(() {
+            bannerReady = false;
+          });
+        }
+      });
+
+      bannerEventSubscription =
+          banner.events.listen((event) {
+        if (event is BannerAdClickedEvent) {
+          debugPrint('Yandex banner clicked');
+        }
+
+        if (event is BannerAdImpressionEvent) {
+          debugPrint('Yandex banner impression');
+        }
+      });
+
+      bannerAd = banner;
+
+      banner.load(
+        const AdRequest(adUnitId: bannerId),
+      );
+
+      setState(() {});
+    } catch (e) {
+      debugPrint('Banner initialization error: $e');
+    }
+  }
+
+  Widget bannerPlacement() {
+    return Container(
+      width: double.infinity,
+      height: 65,
+      margin: const EdgeInsets.fromLTRB(8, 4, 8, 6),
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: const Color(0xFF10262E),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: bannerAd != null && bannerReady
+          ? AdWidget(bannerAd: bannerAd!)
+          : const Text(
+              'Advertisement',
+              style: TextStyle(
+                color: Colors.white54,
+                fontSize: 11,
+              ),
+            ),
+    );
+  }
+
+  // ==========================================
+  // YANDEX INTERSTITIAL AD
+  // ==========================================
+
+  Future<void> loadInterstitial() async {
+    if (interstitialLoading || interstitialAd != null) {
+      return;
+    }
+
+    interstitialLoading = true;
+
+    try {
+      final ad = await interstitialLoader.loadAd(
+        adRequest: const AdRequest(
+          adUnitId: interstitialId,
+        ),
+      );
+
+      if (!mounted) {
+        ad.destroy();
+        return;
+      }
+
+      interstitialAd = ad;
+
+      debugPrint('Yandex interstitial loaded');
+    } on AdRequestError catch (e) {
+      debugPrint('Interstitial loading error: ${e.description}');
+    } catch (e) {
+      debugPrint('Interstitial error: $e');
+    } finally {
+      interstitialLoading = false;
+    }
+  }
+
+  Future<void> showInterstitial() async {
+    final ad = interstitialAd;
+
+    if (ad == null) {
+      loadInterstitial();
+      return;
+    }
+
+    interstitialAd = null;
+
+    ad.setAdEventListener(
+      eventListener: InterstitialAdEventListener(
+        onAdShown: () {
+          debugPrint('Interstitial shown');
+        },
+        onAdClicked: () {
+          debugPrint('Interstitial clicked');
+        },
+        onAdImpression: (data) {
+          debugPrint('Interstitial impression: $data');
+        },
+        onAdFailedToShow: (error) {
+          debugPrint(
+            'Interstitial display error: ${error.description}',
+          );
+        },
+        onAdDismissed: () {
+          debugPrint('Interstitial dismissed');
+        },
+      ),
+    );
+
+    try {
+      await ad.show();
+      await ad.waitForDismiss();
+    } catch (e) {
+      debugPrint('Interstitial show error: $e');
+    } finally {
+      ad.destroy();
+
+      if (mounted) {
+        loadInterstitial();
+      }
+    }
+  }
+
+  // ==========================================
+  // YANDEX REWARDED VIDEO AD
+  // ==========================================
+
+  Future<void> loadRewarded() async {
+    if (rewardedLoading ||
+        rewardedAd != null ||
+        rewardedShowing) {
+      return;
+    }
+
+    rewardedLoading = true;
+
+    try {
+      final ad = await rewardedLoader.loadAd(
+        adRequest: const AdRequest(
+          adUnitId: rewardedId,
+        ),
+      );
+
+      if (!mounted) {
+        ad.destroy();
+        return;
+      }
+
+      rewardedAd = ad;
+
+      debugPrint('Yandex rewarded ad loaded');
+
+      setState(() {});
+    } on AdRequestError catch (e) {
+      debugPrint('Rewarded loading error: ${e.description}');
+    } catch (e) {
+      debugPrint('Rewarded error: $e');
+    } finally {
+      rewardedLoading = false;
+
+      if (mounted) {
+        setState(() {});
+      }
+    }
+  }
+
+  Future<void> watchRewarded() async {
+    final ad = rewardedAd;
+
+    if (ad == null || rewardedShowing) {
+      loadRewarded();
+      return;
+    }
+
+    rewardedAd = null;
+
+    setState(() {
+      rewardedShowing = true;
+    });
+
+    ad.setAdEventListener(
+      eventListener: RewardedAdEventListener(
+        onAdShown: () {
+          debugPrint('Rewarded ad shown');
+        },
+        onAdClicked: () {
+          debugPrint('Rewarded ad clicked');
+        },
+        onAdImpression: (data) {
+          debugPrint('Rewarded impression: $data');
+        },
+        onAdFailedToShow: (error) {
+          debugPrint(
+            'Rewarded display error: ${error.description}',
+          );
+        },
+        onAdDismissed: () {
+          debugPrint('Rewarded ad dismissed');
+        },
+        onRewarded: (reward) {
+          debugPrint(
+            'Reward earned: ${reward.amount} ${reward.type}',
+          );
+        },
+      ),
+    );
+
+    try {
+      await ad.show();
+
+      final reward = await ad.waitForDismiss();
+
+      if (reward != null) {
+        debugPrint('Reward confirmed');
+
+        if (mounted && gameOver) {
+          revive();
+        }
+      }
+    } catch (e) {
+      debugPrint('Rewarded show error: $e');
+    } finally {
+      ad.destroy();
+
+      if (mounted) {
+        setState(() {
+          rewardedShowing = false;
+        });
+
+        loadRewarded();
+      }
+    }
+  }
+
+  // ==========================================
+  // SPONSOR LINK
+  // ==========================================
 
   Future<void> openSponsorLink() async {
-    if (!mounted) return;
-
-    // Pause the running game before opening the sponsor link.
     if (started && !paused && !gameOver) {
       timer?.cancel();
 
@@ -136,410 +420,14 @@ class _SnakeGamePageState extends State<SnakeGamePage> {
           ),
         );
       }
-    } catch (error) {
-      debugPrint('Sponsor link error: $error');
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Could not open sponsor link.'),
-          ),
-        );
-      }
+    } catch (e) {
+      debugPrint('Sponsor link error: $e');
     }
   }
 
-  // BANNER AD
-
-  Future<void> loadBanner() async {
-    if (!adsReady || bannerLoading || bannerAd != null) return;
-
-    if (mounted) {
-      setState(() => bannerLoading = true);
-    }
-
-    try {
-      final ad = await startAppSdk.loadBannerAd(
-        StartAppBannerType.BANNER,
-        onAdImpression: () {
-          debugPrint('Banner impression');
-        },
-        onAdClicked: () {
-          debugPrint('Banner clicked');
-        },
-      );
-
-      if (!mounted) {
-        ad.dispose();
-        return;
-      }
-
-      setState(() {
-        bannerAd = ad;
-        bannerLoading = false;
-      });
-    } catch (error) {
-      debugPrint('Banner loading error: $error');
-
-      if (mounted) {
-        setState(() => bannerLoading = false);
-      }
-    }
-  }
-
-  Widget bannerPlacement() {
-    return Container(
-      height: 60,
-      width: double.infinity,
-      margin: const EdgeInsets.fromLTRB(10, 5, 10, 8),
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        color: const Color(0xFF10262E),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: bannerAd != null
-          ? StartAppBanner(bannerAd!)
-          : Text(
-              bannerLoading
-                  ? 'Loading advertisement...'
-                  : 'Advertisement',
-              style: const TextStyle(
-                color: Colors.white54,
-                fontSize: 11,
-              ),
-            ),
-    );
-  }
-
-  // INTERSTITIAL AD
-
-  Future<void> loadInterstitial() async {
-    if (!adsReady || interstitialLoading || interstitialAd != null) {
-      return;
-    }
-
-    if (mounted) {
-      setState(() => interstitialLoading = true);
-    }
-
-    try {
-      final ad = await startAppSdk.loadInterstitialAd(
-        onAdDisplayed: () {
-          debugPrint('Interstitial displayed');
-        },
-        onAdImpression: () {
-          debugPrint('Interstitial impression');
-        },
-        onAdClicked: () {
-          debugPrint('Interstitial clicked');
-        },
-      );
-
-      if (!mounted) {
-        ad.dispose();
-        return;
-      }
-
-      setState(() {
-        interstitialAd = ad;
-        interstitialLoading = false;
-      });
-    } catch (error) {
-      debugPrint('Interstitial loading error: $error');
-
-      if (mounted) {
-        setState(() => interstitialLoading = false);
-      }
-    }
-  }
-
-  Future<void> showInterstitial() async {
-    final ad = interstitialAd;
-
-    if (ad == null) {
-      loadInterstitial();
-      return;
-    }
-
-    setState(() {
-      interstitialAd = null;
-    });
-
-    try {
-      await ad.show();
-    } catch (error) {
-      debugPrint('Interstitial display error: $error');
-    } finally {
-      ad.dispose();
-
-      if (mounted) {
-        loadInterstitial();
-      }
-    }
-  }
-
-  // NATIVE AD
-
-  Future<void> loadNative() async {
-    if (!adsReady || nativeLoading || nativeAd != null) return;
-
-    if (mounted) {
-      setState(() => nativeLoading = true);
-    }
-
-    try {
-      final ad = await startAppSdk.loadNativeAd(
-        onAdImpression: () {
-          debugPrint('Native ad impression');
-        },
-        onAdClicked: () {
-          debugPrint('Native ad clicked');
-        },
-      );
-
-      if (!mounted) {
-        ad.dispose();
-        return;
-      }
-
-      setState(() {
-        nativeAd = ad;
-        nativeLoading = false;
-      });
-    } catch (error) {
-      debugPrint('Native loading error: $error');
-
-      if (mounted) {
-        setState(() => nativeLoading = false);
-      }
-    }
-  }
-
-  Widget nativePlacement() {
-    final ad = nativeAd;
-
-    if (ad == null) {
-      return const SizedBox.shrink();
-    }
-
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-      child: StartAppNative(
-        ad,
-        (context, updateNativeState, native) {
-          return Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: const Color(0xFF142B33),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: const Color(0xFF31515A),
-              ),
-            ),
-            child: Row(
-              children: [
-                if (native.imageUrl != null &&
-                    native.imageUrl!.isNotEmpty)
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: Image.network(
-                      native.imageUrl!,
-                      width: 58,
-                      height: 58,
-                      fit: BoxFit.cover,
-                      errorBuilder: (context, error, stackTrace) {
-                        return const SizedBox(
-                          width: 58,
-                          height: 58,
-                          child: Icon(
-                            Icons.apps,
-                            color: Colors.white54,
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Text(
-                        'SPONSORED',
-                        style: TextStyle(
-                          color: Colors.white54,
-                          fontSize: 9,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      Text(
-                        native.title ?? 'Sponsored recommendation',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      if (native.description != null)
-                        Text(
-                          native.description!,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: Colors.white70,
-                            fontSize: 11,
-                          ),
-                        ),
-                      if (native.callToAction != null)
-                        Text(
-                          native.callToAction!,
-                          style: const TextStyle(
-                            color: Color(0xFF00E6A0),
-                            fontWeight: FontWeight.bold,
-                            fontSize: 11,
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          );
-        },
-        width: double.infinity,
-        height: 90,
-      ),
-    );
-  }
-
-  // REWARDED VIDEO AD
-
-  Future<void> loadRewarded() async {
-    if (!adsReady ||
-        rewardedLoading ||
-        rewardedAd != null ||
-        rewardedShowing) {
-      return;
-    }
-
-    if (mounted) {
-      setState(() => rewardedLoading = true);
-    }
-
-    try {
-      bool videoCompleted = false;
-
-      final ad = await startAppSdk.loadRewardedVideoAd(
-        onAdDisplayed: () {
-          debugPrint('Rewarded video displayed');
-        },
-        onAdImpression: () {
-          debugPrint('Rewarded video impression');
-        },
-        onAdClicked: () {
-          debugPrint('Rewarded video clicked');
-        },
-        onVideoCompleted: () {
-          debugPrint('Rewarded video completed');
-          videoCompleted = true;
-        },
-        onAdHidden: () {
-          debugPrint('Rewarded video hidden');
-
-          if (!mounted) return;
-
-          setState(() {
-            rewardedShowing = false;
-          });
-
-          if (videoCompleted && gameOver) {
-            revive();
-          }
-        },
-        onAdNotDisplayed: () {
-          debugPrint('Rewarded video was not displayed');
-
-          if (mounted) {
-            setState(() {
-              rewardedShowing = false;
-            });
-          }
-        },
-      );
-
-      if (!mounted) {
-        ad.dispose();
-        return;
-      }
-
-      setState(() {
-        rewardedAd = ad;
-        rewardedLoading = false;
-      });
-    } catch (error) {
-      debugPrint('Rewarded loading error: $error');
-
-      if (mounted) {
-        setState(() => rewardedLoading = false);
-      }
-    }
-  }
-
-  Future<void> watchRewarded() async {
-    final ad = rewardedAd;
-
-    if (ad == null || rewardedShowing) return;
-
-    setState(() {
-      rewardedShowing = true;
-      rewardedAd = null;
-    });
-
-    try {
-      await ad.show();
-    } catch (error) {
-      debugPrint('Rewarded display error: $error');
-    } finally {
-      ad.dispose();
-
-      if (mounted) {
-        setState(() {
-          rewardedShowing = false;
-        });
-
-        loadRewarded();
-      }
-    }
-  }
-
-  // REVIVE GAME
-
-  void revive() {
-    if (!mounted || !gameOver) return;
-
-    timer?.cancel();
-
-    snake = [
-      const Point(5, 10),
-      const Point(4, 10),
-      const Point(3, 10),
-    ];
-
-    food = createFood();
-    direction = Direction.right;
-    nextDirection = Direction.right;
-
-    setState(() {
-      gameOver = false;
-      started = true;
-      paused = false;
-    });
-
-    startTimer();
-  }
-
+  // ==========================================
   // GAME LOGIC
+  // ==========================================
 
   Point<int> createFood() {
     Point<int> position;
@@ -597,10 +485,10 @@ class _SnakeGamePageState extends State<SnakeGamePage> {
     timer?.cancel();
 
     timer = Timer.periodic(
-      Duration(milliseconds: max(75, 175 - score * 2)),
-      (timer) {
-        moveSnake();
-      },
+      Duration(
+        milliseconds: max(75, 175 - score * 2),
+      ),
+      (_) => moveSnake(),
     );
   }
 
@@ -648,13 +536,13 @@ class _SnakeGamePageState extends State<SnakeGamePage> {
       Direction.right => Point(head.x + 1, head.y),
     };
 
-    final bool eating = next == food;
+    final eating = next == food;
 
     final body = eating
         ? snake
         : snake.sublist(0, snake.length - 1);
 
-    final bool collision =
+    final collision =
         next.x < 0 ||
         next.x >= cols ||
         next.y < 0 ||
@@ -671,6 +559,7 @@ class _SnakeGamePageState extends State<SnakeGamePage> {
         finishedGames++;
       });
 
+      // Show an interstitial after every 3 games.
       if (finishedGames % 3 == 0) {
         showInterstitial();
       }
@@ -691,6 +580,31 @@ class _SnakeGamePageState extends State<SnakeGamePage> {
     });
   }
 
+  void revive() {
+    if (!mounted || !gameOver) return;
+
+    timer?.cancel();
+
+    snake = [
+      const Point(5, 10),
+      const Point(4, 10),
+      const Point(3, 10),
+    ];
+
+    food = createFood();
+
+    direction = Direction.right;
+    nextDirection = Direction.right;
+
+    setState(() {
+      gameOver = false;
+      started = true;
+      paused = false;
+    });
+
+    startTimer();
+  }
+
   void handleSwipe(DragUpdateDetails details) {
     if (details.delta.distance < 2) return;
 
@@ -709,7 +623,9 @@ class _SnakeGamePageState extends State<SnakeGamePage> {
     }
   }
 
+  // ==========================================
   // GAME UI
+  // ==========================================
 
   Widget scoreCard(String title, int value) {
     return Expanded(
@@ -739,7 +655,10 @@ class _SnakeGamePageState extends State<SnakeGamePage> {
     );
   }
 
-  Widget directionButton(IconData icon, Direction newDirection) {
+  Widget directionButton(
+    IconData icon,
+    Direction newDirection,
+  ) {
     return SizedBox(
       width: 56,
       height: 46,
@@ -782,27 +701,28 @@ class _SnakeGamePageState extends State<SnakeGamePage> {
                   : 'Swipe to control the snake',
             ),
             const SizedBox(height: 12),
+
             if (gameOver) ...[
               SizedBox(
                 width: double.infinity,
                 child: FilledButton.icon(
-                  onPressed: rewardedAd != null && !rewardedShowing
-                      ? watchRewarded
-                      : null,
+                  onPressed:
+                      rewardedAd != null && !rewardedShowing
+                          ? watchRewarded
+                          : null,
                   icon: const Icon(Icons.play_circle_fill),
                   label: Text(
                     rewardedAd != null
                         ? 'WATCH AD TO REVIVE'
                         : rewardedLoading
                             ? 'LOADING REWARDED AD...'
-                            : rewardedShowing
-                                ? 'PLEASE WAIT...'
-                                : 'REWARDED AD UNAVAILABLE',
+                            : 'REWARDED AD UNAVAILABLE',
                   ),
                 ),
               ),
               const SizedBox(height: 8),
             ],
+
             SizedBox(
               width: double.infinity,
               child: FilledButton(
@@ -829,6 +749,7 @@ class _SnakeGamePageState extends State<SnakeGamePage> {
         child: Column(
           children: [
             const SizedBox(height: 9),
+
             const Text(
               'SNAKE MASTER',
               style: TextStyle(
@@ -838,6 +759,7 @@ class _SnakeGamePageState extends State<SnakeGamePage> {
                 letterSpacing: 3,
               ),
             ),
+
             const Text(
               'EAT • GROW • SURVIVE',
               style: TextStyle(
@@ -845,7 +767,7 @@ class _SnakeGamePageState extends State<SnakeGamePage> {
                 fontSize: 11,
               ),
             ),
-            
+
             Padding(
               padding: const EdgeInsets.all(12),
               child: Row(
@@ -856,8 +778,6 @@ class _SnakeGamePageState extends State<SnakeGamePage> {
                 ],
               ),
             ),
-
-            nativePlacement(),
 
             Expanded(
               child: Center(
@@ -902,18 +822,30 @@ class _SnakeGamePageState extends State<SnakeGamePage> {
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                directionButton(Icons.arrow_upward, Direction.up),
+                directionButton(
+                  Icons.arrow_upward,
+                  Direction.up,
+                ),
               ],
             ),
 
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                directionButton(Icons.arrow_back, Direction.left),
+                directionButton(
+                  Icons.arrow_back,
+                  Direction.left,
+                ),
                 const SizedBox(width: 12),
-                directionButton(Icons.arrow_downward, Direction.down),
+                directionButton(
+                  Icons.arrow_downward,
+                  Direction.down,
+                ),
                 const SizedBox(width: 12),
-                directionButton(Icons.arrow_forward, Direction.right),
+                directionButton(
+                  Icons.arrow_forward,
+                  Direction.right,
+                ),
               ],
             ),
 
@@ -924,112 +856,4 @@ class _SnakeGamePageState extends State<SnakeGamePage> {
               ),
               child: Row(
                 children: [
-                  Expanded(
-                    child: FilledButton.tonal(
-                      onPressed: togglePause,
-                      child: Text(paused ? 'RESUME' : 'PAUSE'),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            bannerPlacement(),
-          ],
-        ),
-      ),
-    );
-  }
-
-  @override
-  void dispose() {
-    timer?.cancel();
-    bannerAd?.dispose();
-    interstitialAd?.dispose();
-    nativeAd?.dispose();
-    rewardedAd?.dispose();
-    super.dispose();
-  }
-}
-
-class SnakePainter extends CustomPainter {
-  final List<Point<int>> snake;
-  final Point<int> food;
-  final int cols;
-  final int rows;
-
-  SnakePainter({
-    required this.snake,
-    required this.food,
-    required this.cols,
-    required this.rows,
-  });
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final cellWidth = size.width / cols;
-    final cellHeight = size.height / rows;
-
-    final gridPaint = Paint()
-      ..color = const Color(0xFF19313A)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 0.4;
-
-    for (int x = 0; x <= cols; x++) {
-      canvas.drawLine(
-        Offset(x * cellWidth, 0),
-        Offset(x * cellWidth, size.height),
-        gridPaint,
-      );
-    }
-
-    for (int y = 0; y <= rows; y++) {
-      canvas.drawLine(
-        Offset(0, y * cellHeight),
-        Offset(size.width, y * cellHeight),
-        gridPaint,
-      );
-    }
-
-    final foodPaint = Paint()
-      ..color = const Color(0xFFFF5252);
-
-    canvas.drawCircle(
-      Offset(
-        (food.x + 0.5) * cellWidth,
-        (food.y + 0.5) * cellHeight,
-      ),
-      cellWidth * 0.36,
-      foodPaint,
-    );
-
-    for (int i = 0; i < snake.length; i++) {
-      final segment = snake[i];
-
-      final rect = Rect.fromLTWH(
-        segment.x * cellWidth + 1,
-        segment.y * cellHeight + 1,
-        cellWidth - 2,
-        cellHeight - 2,
-      );
-
-      final paint = Paint()
-        ..color = i == 0
-            ? const Color(0xFF00E6A0)
-            : const Color(0xFF00A878);
-
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(
-          rect,
-          Radius.circular(cellWidth * 0.2),
-        ),
-        paint,
-      );
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant SnakePainter oldDelegate) {
-    return true;
-  }
-}
+    
