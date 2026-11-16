@@ -2,7 +2,7 @@
 name: snake_master
 description: Snake Master - Classic Snake Game
 publish_to: 'none'
-version: 1.0.0+1
+version: 1.1.0+2
 
 environment:
   sdk: '>=3.3.0 <4.0.0'
@@ -11,8 +11,8 @@ dependencies:
   flutter:
     sdk: flutter
   cupertino_icons: ^1.0.8
-  startapp_sdk: ^1.0.1
   url_launcher: ^6.3.2
+  yandex_mobileads: ^8.6.0
 
 dev_dependencies:
   flutter_test:
