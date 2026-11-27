@@ -35,36 +35,36 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Check Flutter and Dart Versions
-        run: |
-          flutter --version
-          dart --version
+      - name: Check Flutter
+        run: flutter --version
 
-      - name: Verify Android Icon File
+      - name: Generate Missing Android Project
         run: |
-          test -s assets/icon/app_icon.png || {
-            echo "ERROR: assets/icon/app_icon.png is missing or empty."
-            exit 1
-          }
+          flutter create --platforms=android --org com.shahabmillizai --project-name snakemaster .
+          test -f android/app/src/main/AndroidManifest.xml
+          grep -Rqs 'applicationId.*com.shahabmillizai.snakemaster' android/app
+
+      - name: Verify Custom Icon
+        run: |
+          test -s assets/icon/app_icon.png
           file assets/icon/app_icon.png
 
-      - name: Get Flutter Dependencies
+      - name: Get Dependencies
         run: flutter pub get
 
-      - name: Generate Android Launcher Icons
-        run: flutter pub run flutter_launcher_icons:main
+      - name: Generate Custom Launcher Icon
+        run: dart run flutter_launcher_icons
 
-      - name: Verify Generated Android Icons
+      - name: Verify Launcher Icons
         run: |
           test -f android/app/src/main/res/mipmap-mdpi/ic_launcher.png
           test -f android/app/src/main/res/mipmap-hdpi/ic_launcher.png
           test -f android/app/src/main/res/mipmap-xhdpi/ic_launcher.png
-          echo "Launcher icon files generated successfully."
 
       - name: Build Release APK
         run: flutter build apk --release
 
-      - name: Upload Snake Master APK
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: Snake-Master-Release-APK
