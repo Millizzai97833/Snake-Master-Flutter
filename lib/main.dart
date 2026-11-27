@@ -1,19 +1,22 @@
-
 import 'dart:async';
 import 'dart:math';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:yandex_mobileads/mobile_ads.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  try {
-    await YandexAds.initialize();
-    debugPrint('Yandex Ads initialized');
-  } catch (e) {
-    debugPrint('Yandex initialization error: $e');
+  if (!kIsWeb) {
+    try {
+      await YandexAds.initialize();
+      debugPrint('Yandex Ads initialized');
+    } catch (e) {
+      debugPrint('Yandex initialization error: $e');
+    }
   }
 
   runApp(const SnakeMasterApp());
@@ -103,15 +106,17 @@ class _SnakeGamePageState extends State<SnakeGamePage> {
   void initState() {
     super.initState();
     resetGame();
-    loadInterstitial();
-    loadRewarded();
+    if (!kIsWeb) {
+      loadInterstitial();
+      loadRewarded();
+    }
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
 
-    if (!bannerRequested) {
+    if (!bannerRequested && !kIsWeb) {
       bannerRequested = true;
       loadBanner();
     }
@@ -197,7 +202,7 @@ class _SnakeGamePageState extends State<SnakeGamePage> {
   // -----------------------------
 
   Future<void> loadInterstitial() async {
-    if (interstitialLoading || interstitialAd != null) {
+    if (kIsWeb || interstitialLoading || interstitialAd != null) {
       return;
     }
 
@@ -227,6 +232,7 @@ class _SnakeGamePageState extends State<SnakeGamePage> {
   }
 
   Future<void> showInterstitial() async {
+    if (kIsWeb) return;
     final ad = interstitialAd;
 
     if (ad == null) {
@@ -275,7 +281,8 @@ class _SnakeGamePageState extends State<SnakeGamePage> {
   // -----------------------------
 
   Future<void> loadRewarded() async {
-    if (rewardedLoading ||
+    if (kIsWeb ||
+        rewardedLoading ||
         rewardedAd != null ||
         rewardedShowing) {
       return;
@@ -313,6 +320,7 @@ class _SnakeGamePageState extends State<SnakeGamePage> {
   }
 
   Future<void> watchRewarded() async {
+    if (kIsWeb) return;
     final ad = rewardedAd;
 
     if (ad == null || rewardedShowing) {
@@ -606,6 +614,33 @@ class _SnakeGamePageState extends State<SnakeGamePage> {
     }
   }
 
+  KeyEventResult handleKeyEvent(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent) return KeyEventResult.ignored;
+
+    final key = event.logicalKey;
+    if (key == LogicalKeyboardKey.arrowUp || key == LogicalKeyboardKey.keyW) {
+      changeDirection(Direction.up);
+      return KeyEventResult.handled;
+    } else if (key == LogicalKeyboardKey.arrowDown || key == LogicalKeyboardKey.keyS) {
+      changeDirection(Direction.down);
+      return KeyEventResult.handled;
+    } else if (key == LogicalKeyboardKey.arrowLeft || key == LogicalKeyboardKey.keyA) {
+      changeDirection(Direction.left);
+      return KeyEventResult.handled;
+    } else if (key == LogicalKeyboardKey.arrowRight || key == LogicalKeyboardKey.keyD) {
+      changeDirection(Direction.right);
+      return KeyEventResult.handled;
+    } else if (key == LogicalKeyboardKey.space) {
+      if (!started || paused || gameOver) {
+        startGame();
+      } else {
+        togglePause();
+      }
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
+
   // -----------------------------
   // GAME CONTROLS
   // -----------------------------
@@ -734,154 +769,174 @@ class _SnakeGamePageState extends State<SnakeGamePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: SafeArea(
-        child: Column(
-          children: [
-            const SizedBox(height: 9),
+      body: Focus(
+        autofocus: true,
+        onKeyEvent: handleKeyEvent,
+        child: SafeArea(
+          child: Column(
+            children: [
+              const SizedBox(height: 9),
 
-            const Text(
-              'SNAKE MASTER',
-              style: TextStyle(
-                color: Color(0xFF00E6A0),
-                fontSize: 26,
-                fontWeight: FontWeight.w900,
-                letterSpacing: 3,
-              ),
-            ),
-
-            const Text(
-              'EAT • GROW • SURVIVE',
-              style: TextStyle(
-                color: Colors.white54,
-                fontSize: 11,
-              ),
-            ),
-
-            Padding(
-              padding: const EdgeInsets.all(12),
-              child: Row(
-                children: [
-                  scoreCard('SCORE', score),
-                  const SizedBox(width: 10),
-                  scoreCard('BEST', bestScore),
-                ],
-              ),
-            ),
-
-            Expanded(
-              child: Center(
-                child: AspectRatio(
-                  aspectRatio: cols / rows,
-                  child: GestureDetector(
-                    onPanUpdate: handleSwipe,
-                    child: Container(
-                      margin: const EdgeInsets.symmetric(
-                        horizontal: 18,
-                      ),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF0D2028),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                          color: const Color(0xFF00E6A0),
-                          width: 1.5,
-                        ),
-                      ),
-                      child: Stack(
-                        fit: StackFit.expand,
-                        children: [
-                          CustomPaint(
-                            painter: SnakePainter(
-                              snake: snake,
-                              food: food,
-                              cols: cols,
-                              rows: rows,
-                            ),
-                          ),
-                          gameOverlay(),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 8),
-
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                directionButton(
-                  Icons.arrow_upward,
-                  Direction.up,
-                ),
-              ],
-            ),
-
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                directionButton(
-                  Icons.arrow_back,
-                  Direction.left,
-                ),
-                const SizedBox(width: 12),
-                directionButton(
-                  Icons.arrow_downward,
-                  Direction.down,
-                ),
-                const SizedBox(width: 12),
-                directionButton(
-                  Icons.arrow_forward,
-                  Direction.right,
-                ),
-              ],
-            ),
-
-            Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 20,
-                vertical: 8,
-              ),
-              child: Row(
+              Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  FilledButton.icon(
-                    onPressed: togglePause,
-                    icon: Icon(
-                      paused ? Icons.play_arrow : Icons.pause,
-                    ),
-                    label: Text(
-                      
-                      paused ? 'RESUME' : 'PAUSE',
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(10),
+                    child: Image.asset(
+                      'assets/icon/app_icon.png',
+                      width: 34,
+                      height: 34,
+                      fit: BoxFit.cover,
                     ),
                   ),
-                  const SizedBox(width: 12),
-                  FilledButton.icon(
-                    onPressed: resetGame,
-                    icon: const Icon(Icons.refresh),
-                    label: const Text('NEW GAME'),
+                  const SizedBox(width: 10),
+                  const Text(
+                    'SNAKE MASTER',
+                    style: TextStyle(
+                      color: Color(0xFF00E6A0),
+                      fontSize: 26,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 3,
+                    ),
                   ),
                 ],
               ),
-            ),
 
-            Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 20,
-              ),
-              child: SizedBox(
-                width: double.infinity,
-                child: FilledButton.icon(
-                  onPressed: openSponsorLink,
-                  icon: const Icon(Icons.open_in_browser),
-                  label: const Text('VISIT SPONSOR'),
+              const SizedBox(height: 2),
+
+              const Text(
+                'EAT • GROW • SURVIVE',
+                style: TextStyle(
+                  color: Colors.white54,
+                  fontSize: 11,
                 ),
               ),
-            ),
 
-            bannerPlacement(),
-          ],
+              Padding(
+                padding: const EdgeInsets.all(12),
+                child: Row(
+                  children: [
+                    scoreCard('SCORE', score),
+                    const SizedBox(width: 10),
+                    scoreCard('BEST', bestScore),
+                  ],
+                ),
+              ),
+
+              Expanded(
+                child: Center(
+                  child: AspectRatio(
+                    aspectRatio: cols / rows,
+                    child: GestureDetector(
+                      onPanUpdate: handleSwipe,
+                      child: Container(
+                        margin: const EdgeInsets.symmetric(
+                          horizontal: 18,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF0D2028),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: const Color(0xFF00E6A0),
+                            width: 1.5,
+                          ),
+                        ),
+                        child: Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            CustomPaint(
+                              painter: SnakePainter(
+                                snake: snake,
+                                food: food,
+                                cols: cols,
+                                rows: rows,
+                              ),
+                            ),
+                            gameOverlay(),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 8),
+
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  directionButton(
+                    Icons.arrow_upward,
+                    Direction.up,
+                  ),
+                ],
+              ),
+
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  directionButton(
+                    Icons.arrow_back,
+                    Direction.left,
+                  ),
+                  const SizedBox(width: 12),
+                  directionButton(
+                    Icons.arrow_downward,
+                    Direction.down,
+                  ),
+                  const SizedBox(width: 12),
+                  directionButton(
+                    Icons.arrow_forward,
+                    Direction.right,
+                  ),
+                ],
+              ),
+
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 8,
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    FilledButton.icon(
+                      onPressed: togglePause,
+                      icon: Icon(
+                        paused ? Icons.play_arrow : Icons.pause,
+                      ),
+                      label: Text(
+                        paused ? 'RESUME' : 'PAUSE',
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    FilledButton.icon(
+                      onPressed: resetGame,
+                      icon: const Icon(Icons.refresh),
+                      label: const Text('NEW GAME'),
+                    ),
+                  ],
+                ),
+              ),
+
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                ),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: openSponsorLink,
+                    icon: const Icon(Icons.open_in_browser),
+                    label: const Text('VISIT SPONSOR'),
+                  ),
+                ),
+              ),
+
+              bannerPlacement(),
+            ],
+          ),
         ),
       ),
     );
@@ -990,4 +1045,3 @@ class SnakePainter extends CustomPainter {
     return true;
   }
 }
-
